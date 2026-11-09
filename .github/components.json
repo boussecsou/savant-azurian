@@ -1,0 +1,37 @@
+{
+  "version": 1,
+  "non_runtime": ["pwa/**", "docs/**", "tests/**", "evals/**", ".github/**", "scripts/**", "bff/**", "*.md", "*.rst", "LICENSE", ".gitignore", ".env.example", "Dockerfile", "README_banner_SA2.png", ".claude/**"],
+  "components": {
+    "agent": {
+      "workflow": "cd.yml",
+      "runtime": ["main.py", "src/savant/**", "azure.yaml", ".agentignore", "pyproject.toml", "uv.lock", "requirements.txt"],
+      "exclude": ["src/savant/oauth_callback.py", "src/savant/bff_logging.py", "src/savant/bff_api.py", "src/savant/bff_workspace.py", "src/savant/workspace.py", "src/savant/workspace_store.py", "src/savant/document_library.py", "src/savant/bff_documents.py"],
+      "source_files": [],
+      "ci": ["tests/**", "scripts/smoke_test.py", ".github/workflows/ci.yml", ".github/workflows/cd.yml"]
+    },
+    "bff": {
+      "workflow": "publish-bff.yml",
+      "runtime": ["Dockerfile.bff", "Dockerfile.bff.dockerignore", ".dockerignore", "pyproject.toml", "uv.lock", "scripts/package_bff.py"],
+      "exclude": [],
+      "source_files": [
+        "src/savant/__init__.py",
+        "src/savant/oauth_callback.py",
+        "src/savant/bff_api.py",
+        "src/savant/bff_logging.py",
+        "src/savant/bff_workspace.py",
+        "src/savant/workspace.py",
+        "src/savant/workspace_store.py",
+        "src/savant/notion_oauth.py",
+        "src/savant/oauth_key.py",
+        "src/savant/oauth_runtime.py",
+        "src/savant/correlation.py",
+        "src/savant/document_library.py",
+        "src/savant/bff_documents.py"
+      ],
+      "ci": ["tests/test_bff*.py", "tests/test_oauth*.py", "tests/test_notion_oauth.py", "tests/test_component*.py", "tests/test_package_bff.py", "scripts/smoke_test_bff.py", "scripts/component_changes.py", "scripts/release_plan.py", "bff/**", ".github/workflows/ci.yml", ".github/workflows/publish-bff.yml"]
+    }
+  },
+  "checks": {
+    "pwa": ["pwa/**", ".github/workflows/ci.yml"]
+  }
+}

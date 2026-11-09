@@ -1,0 +1,137 @@
+name: Publish BFF
+
+on:
+  workflow_dispatch:
+    inputs:
+      publish_v1:
+        description: "Créer aussi v1 (première publication, sans écrasement)"
+        type: boolean
+        default: false
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [main]
+
+# Start manually; enable automatic publication later with this repository variable.
+concurrency:
+  group: publish-bff-main
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  plan:
+    if: >-
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
+      (vars.BFF_AUTO_PUBLISH == 'true' &&
+       github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.head_branch == 'main' &&
+       github.event.workflow_run.head_repository.full_name == github.repository)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      sha: ${{ steps.plan.outputs.sha }}
+      publish: ${{ steps.plan.outputs.release }}
+      eligible: ${{ steps.plan.outputs.eligible }}
+    steps:
+      - name: Checkout tested commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Plan BFF release
+        id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -m scripts.release_plan --component bff
+
+  publish:
+    needs: plan
+    if: needs.plan.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write
+    outputs:
+      digest: ${{ steps.publish.outputs.digest }}
+    env:
+      ACR_NAME: ${{ vars.ACR_NAME }}
+      IMAGE_REPOSITORY: sa2-bff
+      SOURCE_SHA: ${{ needs.plan.outputs.sha }}
+      PUBLISH_V1: ${{ github.event_name == 'workflow_dispatch' && inputs.publish_v1 }}
+    steps:
+      - name: Checkout tested commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.plan.outputs.sha }}
+          persist-credentials: false
+
+      - name: Build BFF on GitHub runner
+        run: >-
+          docker build --file Dockerfile.bff --tag sa2-bff:publish
+          --label "org.opencontainers.image.revision=$SOURCE_SHA"
+          --label "org.opencontainers.image.source=https://github.com/$GITHUB_REPOSITORY" .
+
+      - name: Verify readiness with synthetic configuration
+        run: python3 scripts/smoke_test_bff.py sa2-bff:publish
+
+      - name: Azure login with existing OIDC identity
+        uses: azure/login@053f7285eb20bf5469ef084617b0b24d3cec53fc # v3.1.0
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Publish, lock and verify image
+        id: publish
+        shell: bash
+        run: bash bff/publish.sh
+
+      - name: Remove Docker credentials
+        if: always()
+        run: rm -f "$HOME/.docker/config.json"
+
+  checkpoint:
+    needs: [plan, publish]
+    if: >-
+      always() && !cancelled() && needs.plan.result == 'success' &&
+      needs.plan.outputs.eligible == 'true' &&
+      (needs.publish.result == 'success' || needs.publish.result == 'skipped')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Record verified source and digest
+        env:
+          SOURCE_SHA: ${{ needs.plan.outputs.sha }}
+          DIGEST: ${{ needs.publish.outputs.digest }}
+          PUBLISHED: ${{ needs.plan.outputs.publish }}
+        run: |
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          Path("bff-publication.json").write_text(json.dumps({
+              "schema_version": 1,
+              "component": "bff",
+              "source_sha": os.environ["SOURCE_SHA"],
+              "digest": os.environ["DIGEST"],
+              "published": os.environ["PUBLISHED"] == "true",
+              "run_id": os.environ["GITHUB_RUN_ID"],
+          }, indent=2) + "\n")
+          PY
+
+      - name: Save publication checkpoint
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: release-bff-${{ needs.plan.outputs.sha }}
+          path: bff-publication.json
+          if-no-files-found: error
+          retention-days: 90
+          overwrite: true

@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Savant</title>
+    <meta name="description" content="Savant Azurian 2, your personal assistant." />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="theme-color" content="#f6f6f9" />
+    <script>
+      // Apply the stored theme before the first paint so the page never flashes the wrong one.
+      (function () {
+        try {
+          var stored = localStorage.getItem("sa2-theme");
+          var theme = stored === "light" || stored === "dark" ? stored : "";
+          if (theme) document.documentElement.setAttribute("data-theme", theme);
+          var dark = theme ? theme === "dark" : window.matchMedia("(prefers-color-scheme: dark)").matches;
+          var meta = document.querySelector('meta[name="theme-color"]');
+          if (meta) meta.setAttribute("content", dark ? "#08080b" : "#f6f6f9");
+        } catch (error) {
+          // Storage blocked: the stylesheet's default follows the system.
+        }
+      })();
+    </script>
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="Savant" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="icon" href="/favicon.ico" sizes="48x48" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32.png" />
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

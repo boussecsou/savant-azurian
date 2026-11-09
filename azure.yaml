@@ -1,0 +1,66 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/Azure/azure-dev/main/schemas/v1.0/azure.yaml.json
+
+name: savant-azurian
+
+services:
+    ai-project:
+        host: azure.ai.project
+        endpoint: ${AZURE_AI_PROJECT_ENDPOINT}
+    sa2-agent:
+        project: .
+        host: azure.ai.agent
+        language: python
+        uses:
+            - ai-project
+        env:
+            PYTHONPATH: /app/src
+            AZURE_OPENAI_BASE_URL: ${AZURE_OPENAI_BASE_URL}
+            AZURE_AI_MODEL_DEPLOYMENT_NAME: ${AZURE_AI_MODEL_DEPLOYMENT_NAME}
+            # Foundry toolbox "sa2-web" (web search, code interpreter). The unversioned URL follows the
+            # toolbox's default version. "sa2-toolbox" (with Outlook) is kept aside: its Outlook source
+            # fails tools/list for the BFF caller and takes the whole toolbox down. Tool calls are judged
+            # one by one (tools/toolbox_policy.py): web search runs freely, code and unknown tools ask.
+            TOOLBOX_ENDPOINT: ${TOOLBOX_ENDPOINT}
+            AZURE_AI_PROJECT_ENDPOINT: ${AZURE_AI_PROJECT_ENDPOINT}
+            NOTION_MCP_ENABLED: "true"
+            NOTION_BACKEND: direct
+            NOTION_MCP_URL: https://mcp.notion.com/mcp
+            NOTION_TOOL_POLICY: dynamic
+            # Reads require an explicit read-only hint; everything else needs consent.
+            NOTION_READ_TOOL_NAMES: ""
+            NOTION_WRITE_TOOL_NAMES: ""
+            NOTION_OAUTH_CALLBACK_URL: ${NOTION_OAUTH_CALLBACK_URL}
+            NOTION_OAUTH_STORE_URL: ${NOTION_OAUTH_STORE_URL}
+            NOTION_OAUTH_KEY_VAULT_URL: ${KEY_VAULT_URL}
+            NOTION_OAUTH_KEY_VAULT_SECRET_NAME: notion-oauth-encryption-key
+            # Read from instance_identity.client_id, not inferred from principal_id.
+            NOTION_OAUTH_MANAGED_IDENTITY_CLIENT_ID: ${NOTION_OAUTH_MANAGED_IDENTITY_CLIENT_ID}
+            # Expected trusted Playground user ID; mismatch fails closed.
+            # Verify the platform supplies this owner ID during the authorized cloud test.
+            NOTION_OWNER_ID: ${NOTION_OWNER_ID}
+            # SSH tool: dedicated account on the Linux VM. All values are non-secret; the
+            # private key lives in Key Vault and is read at use time. The host key is pinned.
+            # All-or-nothing: leave every SSH_* variable empty in the azd environment to disable it.
+            SSH_HOST: ${SSH_HOST}
+            SSH_PORT: "22"
+            SSH_USER: ${SSH_USER}
+            SSH_HOST_KEY: ${SSH_HOST_KEY}
+            SSH_KEY_VAULT_URL: ${SSH_KEY_VAULT_URL}
+            SSH_KEY_SECRET_NAME: ${SSH_KEY_SECRET_NAME}
+            # Project documents (Azure AI Search, docs/search-documents.md). The agent identity needs
+            # Search Index Data Reader on the search service.
+            SEARCH_ENDPOINT: ${SEARCH_ENDPOINT}
+            SEARCH_INDEX: sa2-docs
+        codeConfiguration:
+            dependencyResolution: remote_build
+            entryPoint: main.py
+            runtime: python_3_13
+        container:
+            resources:
+                cpu: "0.5"
+                memory: 1Gi
+        kind: hosted
+        name: sa2-agent
+        protocols:
+            - protocol: responses
+              version: 2.0.0

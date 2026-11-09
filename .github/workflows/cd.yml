@@ -1,0 +1,203 @@
+name: CD
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: cd-main
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  AGENT_PROJECT_DIR: .
+  AZD_ENV_NAME: ${{ vars.AZD_ENV_NAME || 'savant-ci' }}
+
+jobs:
+  plan:
+    if: >-
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.head_branch == 'main' &&
+       github.event.workflow_run.head_repository.full_name == github.repository)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      sha: ${{ steps.plan.outputs.sha }}
+      deploy: ${{ steps.plan.outputs.release }}
+      eligible: ${{ steps.plan.outputs.eligible }}
+    steps:
+      - name: Checkout tested commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Plan Hosted Agent release
+        id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -m scripts.release_plan --component agent
+
+  deploy-and-test:
+    needs: plan
+    if: needs.plan.outputs.deploy == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write
+    outputs:
+      version: ${{ steps.deployment.outputs.version }}
+    steps:
+      - name: Checkout tested commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.plan.outputs.sha }}
+          persist-credentials: false
+
+      - name: Install Python 3.13
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.13"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+
+      - name: Verify deployment dependencies
+        run: |
+          uv export --locked --no-dev --no-emit-project --no-hashes --format requirements-txt --output-file requirements.txt > /dev/null
+          git diff --exit-code -- requirements.txt
+
+      - name: Install Azure Developer CLI
+        uses: Azure/setup-azd@0b7e3a35ab00f2eee7080c845eb39c3f0ebfa553 # v2.4.0
+
+      - name: Install azd Foundry extension
+        run: azd ext install microsoft.foundry
+
+      - name: Verify azd Foundry extension
+        run: |
+          set -euo pipefail
+          # No `grep -q`: it exits on the first match, azd then gets SIGPIPE and
+          # pipefail turns that into exit code 141 even though the extension is installed.
+          azd ext list | grep "microsoft.foundry" > /dev/null
+          azd ai agent --help > /dev/null
+
+      - name: Azure login with OIDC
+        uses: azure/login@053f7285eb20bf5469ef084617b0b24d3cec53fc # v3.1.0
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Configure azd authentication
+        run: |
+          azd config set auth.useAzCliAuth true
+          azd config set defaults.subscription "${{ vars.AZURE_SUBSCRIPTION_ID }}"
+
+      - name: Configure deployment environment
+        working-directory: ${{ env.AGENT_PROJECT_DIR }}
+        # Every value comes from a GitHub repository variable with the same name as the azd
+        # environment variable that azure.yaml reads. See docs/configuration.md.
+        env:
+          AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+          AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+          AZURE_LOCATION: ${{ vars.AZURE_LOCATION }}
+          AZURE_AI_PROJECT_ENDPOINT: ${{ vars.AZURE_AI_PROJECT_ENDPOINT }}
+          AZURE_AI_PROJECT_ID: ${{ vars.AZURE_AI_PROJECT_ID }}
+          AZURE_OPENAI_BASE_URL: ${{ vars.AZURE_OPENAI_BASE_URL }}
+          AZURE_AI_MODEL_DEPLOYMENT_NAME: ${{ vars.AZURE_AI_MODEL_DEPLOYMENT_NAME }}
+          TOOLBOX_ENDPOINT: ${{ vars.TOOLBOX_ENDPOINT }}
+          NOTION_OAUTH_CALLBACK_URL: ${{ vars.NOTION_OAUTH_CALLBACK_URL }}
+          NOTION_OAUTH_STORE_URL: ${{ vars.NOTION_OAUTH_STORE_URL }}
+          KEY_VAULT_URL: ${{ vars.KEY_VAULT_URL }}
+          NOTION_OAUTH_MANAGED_IDENTITY_CLIENT_ID: ${{ vars.NOTION_OAUTH_MANAGED_IDENTITY_CLIENT_ID }}
+          NOTION_OWNER_ID: ${{ vars.NOTION_OWNER_ID }}
+          SEARCH_ENDPOINT: ${{ vars.SEARCH_ENDPOINT }}
+          SSH_HOST: ${{ vars.SSH_HOST }}
+          SSH_USER: ${{ vars.SSH_USER }}
+          SSH_HOST_KEY: ${{ vars.SSH_HOST_KEY }}
+          SSH_KEY_VAULT_URL: ${{ vars.SSH_KEY_VAULT_URL }}
+          SSH_KEY_SECRET_NAME: ${{ vars.SSH_KEY_SECRET_NAME }}
+        run: |
+          set -euo pipefail
+
+          azd env select "$AZD_ENV_NAME" || azd env new "$AZD_ENV_NAME" --no-prompt
+
+          for name in AZURE_SUBSCRIPTION_ID AZURE_TENANT_ID AZURE_LOCATION \
+            AZURE_AI_PROJECT_ENDPOINT AZURE_AI_PROJECT_ID AZURE_OPENAI_BASE_URL \
+            AZURE_AI_MODEL_DEPLOYMENT_NAME TOOLBOX_ENDPOINT NOTION_OAUTH_CALLBACK_URL \
+            NOTION_OAUTH_STORE_URL KEY_VAULT_URL NOTION_OAUTH_MANAGED_IDENTITY_CLIENT_ID \
+            NOTION_OWNER_ID SEARCH_ENDPOINT SSH_HOST SSH_USER SSH_HOST_KEY \
+            SSH_KEY_VAULT_URL SSH_KEY_SECRET_NAME; do
+            azd env set "$name" "${!name:-}"
+          done
+
+      - name: Deploy agent
+        working-directory: ${{ env.AGENT_PROJECT_DIR }}
+        run: azd deploy sa2-agent --no-prompt
+
+      - name: Record deployed version
+        id: deployment
+        working-directory: ${{ env.AGENT_PROJECT_DIR }}
+        run: |
+          set -euo pipefail
+          agent_version="$(azd env get-value AGENT_SA2_AGENT_VERSION)"
+          if [[ ! "$agent_version" =~ ^[0-9]+$ ]]; then
+            echo "::error::Deployment did not record a valid agent version."
+            exit 1
+          fi
+          echo "DEPLOYED_AGENT_VERSION=$agent_version" >> "$GITHUB_ENV"
+          echo "version=$agent_version" >> "$GITHUB_OUTPUT"
+          echo "Deployed sa2-agent version $agent_version from $(git rev-parse HEAD)." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Smoke test runtime and model
+        working-directory: ${{ env.AGENT_PROJECT_DIR }}
+        env:
+          PYTHONPATH: src
+        run: python scripts/smoke_test.py
+
+  checkpoint:
+    needs: [plan, deploy-and-test]
+    if: >-
+      always() && !cancelled() && needs.plan.result == 'success' &&
+      needs.plan.outputs.eligible == 'true' &&
+      (needs.deploy-and-test.result == 'success' || needs.deploy-and-test.result == 'skipped')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Record verified source and version
+        env:
+          SOURCE_SHA: ${{ needs.plan.outputs.sha }}
+          VERSION: ${{ needs.deploy-and-test.outputs.version }}
+          RELEASED: ${{ needs.plan.outputs.deploy }}
+        run: |
+          python3 - <<'PYTHON'
+          import json, os
+          from pathlib import Path
+          Path("agent-release.json").write_text(json.dumps({
+              "schema_version": 1,
+              "component": "agent",
+              "source_sha": os.environ["SOURCE_SHA"],
+              "version": os.environ["VERSION"],
+              "released": os.environ["RELEASED"] == "true",
+              "run_id": os.environ["GITHUB_RUN_ID"],
+          }, indent=2) + "\n")
+          PYTHON
+      - name: Save release checkpoint
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: release-agent-${{ needs.plan.outputs.sha }}
+          path: agent-release.json
+          if-no-files-found: error
+          retention-days: 90
+          overwrite: true

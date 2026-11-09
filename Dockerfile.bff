@@ -1,0 +1,33 @@
+FROM ghcr.io/astral-sh/uv:0.12.0 AS uv
+
+FROM python:3.13-slim AS dependencies
+COPY --from=uv /uv /usr/local/bin/uv
+WORKDIR /build
+COPY pyproject.toml uv.lock ./
+# The BFF receives its key through ACA secret injection, without a Key Vault SDK.
+RUN uv export --locked --no-dev --no-emit-project --no-hashes \
+        --prune azure-keyvault-secrets --output-file requirements.bff.txt \
+    && uv venv /opt/venv \
+    && uv pip install --python /opt/venv/bin/python --no-cache -r requirements.bff.txt
+
+FROM python:3.13-slim AS sources
+WORKDIR /build
+COPY .github/components.json .github/components.json
+COPY scripts/package_bff.py scripts/package_bff.py
+COPY src/savant ./src/savant
+RUN python scripts/package_bff.py --destination /package
+
+FROM python:3.13-slim
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PATH="/opt/venv/bin:$PATH" \
+    PYTHONPATH=/app/src \
+    OAUTH_CALLBACK_PORT=8090
+WORKDIR /app
+COPY --from=dependencies /opt/venv /opt/venv
+COPY --from=sources /package/src ./src
+USER 10001:10001
+EXPOSE 8090
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s \
+    CMD python -c "from urllib.request import urlopen; urlopen('http://127.0.0.1:8090/readiness', timeout=3)" || exit 1
+CMD ["python", "-m", "savant.oauth_callback"]

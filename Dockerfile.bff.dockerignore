@@ -1,0 +1,19 @@
+# Only these build inputs are sent to the Docker daemon.
+**
+!Dockerfile.bff
+!Dockerfile.bff.dockerignore
+!pyproject.toml
+!uv.lock
+!.github/
+!.github/components.json
+!scripts/
+!scripts/package_bff.py
+!src/
+!src/savant/
+!src/savant/**
+src/**/__pycache__/
+src/**/*.pyc
+src/**/.env
+src/**/.env.*
+src/**/*.db
+src/**/*.log

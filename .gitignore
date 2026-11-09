@@ -1,0 +1,35 @@
+# Environment and secrets
+.env
+.env.*
+!.env.example
+.azure/
+.aws/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# Editors, OS files and Windows/WSL download markers
+.vscode/
+.idea/
+.DS_Store
+*:Zone.Identifier
+*Zone.Identifier
+
+# Local Azure Developer CLI diagnostic logs and Hosted Agent session logs
+azd-ai-*.log
+*.log
+/hosted-agent-logs/
+
+# Local AI tooling and personal experiments
+.claude/
+.codex/
+.agents/
+/local_labo/
