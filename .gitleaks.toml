@@ -1,0 +1,8 @@
+# Gitleaks configuration: the default rules, plus one narrow exception.
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Built-in Azure role definition IDs are public identifiers published by Microsoft, not secrets. Their variable names contain the word 'secret' (Key Vault Secrets User and Officer)."
+targetRules = ["generic-api-key"]
+paths = ['''infra/modules/rbac\.bicep''']
