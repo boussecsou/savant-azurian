@@ -655,7 +655,7 @@ websockets==16.1.1
     #   fastmcp-slim
     #   langgraph-sdk
     #   langsmith
-wrapt==1.17.3
+wrapt==2.5.2
     # via
     #   microsoft-opentelemetry
     #   opentelemetry-instrumentation
