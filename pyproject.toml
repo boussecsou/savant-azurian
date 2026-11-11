@@ -31,6 +31,7 @@ dependencies = [
 [dependency-groups]
 dev = [
     "pytest>=8.0.0",
+    "ruff>=0.17.4",
 ]
 
 [tool.pytest.ini_options]
@@ -39,3 +40,19 @@ testpaths = ["tests"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py313"
+extend-exclude = ["pwa", "local_labo"]
+
+[tool.ruff.lint]
+# A deliberately small, meaningful set: pycodestyle errors, pyflakes, import order, pyupgrade and bugbear.
+select = ["E4", "E7", "E9", "F", "I", "UP", "B"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["savant", "scripts"]
+
+[tool.ruff.lint.per-file-ignores]
+# Fixtures imported from a helper module and received as test arguments look like redefinitions.
+"tests/*" = ["F811"]
