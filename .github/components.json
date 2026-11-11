@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "non_runtime": ["pwa/**", "docs/**", "tests/**", "evals/**", ".github/**", "scripts/**", "bff/**", "*.md", "*.rst", "LICENSE", ".gitignore", ".env.example", "Dockerfile", "README_banner_SA2.png", ".claude/**"],
+  "non_runtime": ["pwa/**", "docs/**", "tests/**", "evals/**", ".github/**", "scripts/**", "bff/**", "*.md", "*.rst", "LICENSE", ".gitignore", ".env.example", "Dockerfile", ".claude/**", "infra/**", ".editorconfig", ".gitattributes", ".pre-commit-config.yaml", "justfile", ".devcontainer/**", "release-please-config.json", ".release-please-manifest.json", "CODE_OF_CONDUCT.md", "CHANGELOG.md"],
   "components": {
     "agent": {
       "workflow": "cd.yml",
