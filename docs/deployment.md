@@ -1,6 +1,6 @@
 # Deployment guide
 
-How to stand up your own copy of Savant Azurian in Azure, from an empty subscription to a working agent, with Bicep and the Azure Developer CLI (`azd`). Everything personal (names, IDs, URLs) comes from your own `azd` environment: nothing personal is stored in the repository. Every variable is described in the [configuration reference](configuration.md); the reasoning behind the choices is in [ADR-0023](adr/0023-infrastructure-as-code-with-bicep-and-azd.md).
+How to stand up your own copy of Savant Azurian in Azure, from an empty subscription to a working agent, with Bicep and the Azure Developer CLI (`azd`). Everything personal (names, IDs, URLs) comes from your own `azd` environment: nothing personal is stored in the repository. Every variable is described in the [configuration reference](configuration.md); the reasoning behind the choices is in [ADR-0023](adr/0023-infrastructure-as-code-with-bicep-and-azd.md). A [PDF version](deployment.pdf) is generated from this page (`just docs-pdf`).
 
 > **Status: not yet validated against a real subscription, and the Bicep was not compiled.** `infra/` was written from the Azure and Foundry documentation. The Bicep compiler could not be installed in the environment where this was written, so `bicep build` has never run. Treat the first deployment as a validation: start with `azd provision --preview`, and fix what the compiler or the preview reports. The points most likely to need a fix are in [What to verify first](#what-to-verify-first). Remove this note after a clean deployment.
 

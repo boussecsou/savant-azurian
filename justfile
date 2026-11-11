@@ -34,6 +34,11 @@ check: lint docs-check test pwa-check
 pwa-check:
     cd pwa && npm test && npm run build
 
+# Regenerate the PDF guides from their Markdown (needs Chromium; the `markdown` package is fetched on the fly).
+docs-pdf:
+    uv run --no-project --with markdown python -m scripts.build_pdf docs/user-guide.md docs/user-guide.pdf
+    uv run --no-project --with markdown python -m scripts.build_pdf docs/deployment.md docs/deployment.pdf
+
 # Regenerate requirements.txt from uv.lock (CI fails when they diverge).
 export-requirements:
     uv export --locked --no-dev --no-emit-project --no-hashes --format requirements-txt --output-file requirements.txt

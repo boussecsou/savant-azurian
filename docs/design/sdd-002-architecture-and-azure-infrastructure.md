@@ -67,7 +67,7 @@ The hosted target is a **Foundry hosted agent**. The agent is a LangGraph graph 
 
 **Optional or later:** a separate Azure OpenAI resource, Azure AI Document Intelligence for scanned documents.
 
-The [configuration reference](../configuration.md) lists every setting these resources feed.
+The [deployment guide](../deployment.md) lists the resources a deployment creates today.
 
 ## 5. Security principles
 

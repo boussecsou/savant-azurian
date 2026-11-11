@@ -33,7 +33,7 @@ A specification sets the target, a design document shows the structure that reac
 - **How an agent with real tools stays safe:** [ADR-0017](../adr/0017-two-layer-authorization-for-notion-writes.md), [ADR-0018](../adr/0018-ssh-tool-with-a-semantic-command-judge.md), [ADR-0019](../adr/0019-external-content-is-data.md), [ADR-0020](../adr/0020-keyless-access-with-entra-and-key-vault.md).
 - **How the voice works:** [SDD-003](sdd-003-conversational-voice-runtime.md), [ADR-0007](../adr/0007-live-stt-with-utterance-final-trigger.md), [ADR-0015](../adr/0015-browser-voice-interface-contract.md).
 - **How it is delivered:** [SDD-004](sdd-004-continuous-integration-and-delivery.md), [component delivery](../component-cicd.md).
-- **How to configure your own copy:** the [configuration reference](../configuration.md).
+- **How to run your own copy:** the [deployment guide](../deployment.md) and the [configuration reference](../configuration.md).
 
 ## Conventions
 

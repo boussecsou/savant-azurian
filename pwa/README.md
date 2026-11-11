@@ -2,9 +2,9 @@
 
 **A personal, voice-first AI assistant — designed as an installable Progressive Web App (PWA) and hosted on Microsoft Azure.**
 
-**Location:** this app lives in the `pwa/` folder of the [`savant-azurian`](https://github.com/boussecsou/savant-azurian) monorepo (it started in a separate repository).
+**Location:** this app lives in the `pwa/` folder of the [`savant-azurian`](https://github.com/boussecsou/savant-azurian) monorepo.
 
-> **Project status: text vertical slice implemented, end-to-end check pending.** The installable chat app (text chat, *Connect Notion* button, connection state) is in this folder. It runs **locally** and calls the BFF on Azure; it has been verified in a browser against a mocked BFF, but **not** yet against the real BFF and agent (Task 26.4's definition of done). There is no Azure hosting for the app itself (Azure Static Web Apps is unavailable on this subscription; hosting is tracked in Task 40).
+> **Status:** the chat, the voice interface, projects, sessions and documents are implemented and tested; it runs **locally**. Real voice with a microphone and the document upload in the interface still need a manual check against a real backend ([project status](../docs/status.md)). There is no Azure hosting for the app ([ADR-0010](../docs/adr/0010-monorepo-local-pwa-and-entra-owner-access.md)).
 
 ## Overview
 
@@ -20,21 +20,20 @@ The web app is designed to be:
 - **Installable:** web manifest, icons, and a small service worker that caches the app shell only (never `/api`).
 - **Security-conscious:** no model credentials, Notion OAuth tokens, or privileged Azure secrets in browser code.
 
-## Planned experience
+## Features
 
 | Area | Experience | Status |
 | --- | --- | --- |
-| **Voice** | An orb you tap and talk to: live captions, spoken answers read word by word, mute, language (French or English), tool announcements while the agent works | Available |
+| **Voice** | An orb you tap and talk to: live captions, spoken answers read word by word, mute, language (French or English), tool announcements while the agent works | Available; needs a real backend and a microphone |
 | **Text chat** | A thread beside the orb, with a composer made for IDs, logs and code (technical mode, `/` commands, copyable ID chips) | Available |
-| **Sessions and projects** | Sessions filed in projects (`Main` by default), rename, pin, move, delete with Undo, search, a command palette (Ctrl/⌘+K). Stored in the browser behind a `SessionStore` interface, so the BFF (Cosmos DB) can replace it later | Available, on this device only |
-| **Connect Notion** | Connection cards in Settings, with the state the gateway reports | Available |
+| **Sessions and projects** | Sessions filed in projects (`Main` by default), rename, pin, move, delete with Undo, search, a command palette (Ctrl/⌘+K). Kept in the browser behind a `SessionStore` interface and synchronized with the backend (Cosmos DB) when it offers it | Available |
+| **Connect Notion** | Connection cards in Settings, with the state the backend reports | Available |
 | **Settings** | Tools and connections, spoken language, read answers aloud, theme, reduce motion, diagnostics | Available |
-| **Documents** | Upload and consult project documents with grounded answers | Off (`DOCUMENTS_ENABLED`): needs the RAG |
-| **Canvas** | Reports and charts beside the thread | Off (`CANVAS_ENABLED`): needs an artifact channel |
-| **Memory** | The agent remembers past sessions and documents of the active project | Planned: Azure AI Search, tasks 37–39 |
+| **Documents** | Add documents to a project (drag and drop or **+**), see their real indexing state, and see which ones an answer used | Available; the upload flow still needs a manual check in the interface |
+| **Canvas** | Reports and charts beside the thread | Off by design (`CANVAS_ENABLED`) |
+| **Memory over past sessions** | The agent remembers earlier sessions of the project | Designed, not built |
 
-**Planned does not mean available.** Parts that need a backend which does not exist yet stay off, so the interface never promises what is not there: projects are a local filing system until the agent receives a `project_id`, approvals stay conversational (the card only types "Yes, go ahead." for you), and only durations really measured in the browser are shown.
-
+**The interface shows only what exists.** A part whose backend is missing stays off, so the interface never promises what is not there: approvals stay conversational (the card only types "Yes, go ahead." for you), and only durations really measured in the browser are shown ([ADR-0013](../docs/adr/0013-interface-shows-only-what-exists.md), [ADR-0014](../docs/adr/0014-approval-stays-conversational.md)).
 
 ## System architecture
 
@@ -69,23 +68,14 @@ Details and the owner-only access model: [`docs/bff-pwa-api.md`](../docs/bff-pwa
 
 For backend source code, deployment configuration, and security tests, see the repository root.
 
-## Milestones and evidence
+## Using it
 
-This app follows the Savant Azurian 2 project documentation in Notion:
-
-| Milestone | Definition of done | Status |
-| --- | --- | --- |
-| [Task 26.3 — PWA-facing BFF routes](https://app.notion.com/p/3f1eba09656f81eab6d2cc086520e626) | Owner-authenticated chat/OAuth routes and consistent server-side identity | Routes merged; Entra owner access pending (Task 26.35) |
-| [Task 26.4 — Text PWA vertical slice](https://app.notion.com/p/3f1eba09656f8196841df3cde6428553) | From the local PWA against the Azure BFF, connect Notion and retrieve real tasks through the BFF and agent | App implemented; end-to-end check pending |
-| [Task 40 — Complete PWA](https://app.notion.com/p/3d1eba09656f817ca3b3f64c6e55dc9e) | Extend the same app to voice, projects, documents, and robust connection states | Not started |
-
-The first PWA milestone requires an **actual** end-to-end check against the Azure backend; a mockup or a successful static website build is not equivalent to a verified Notion integration.
+The [user guide](../docs/user-guide.md) walks through the interface with screenshots. Design: [SDD-005](../docs/design/sdd-005-product-model-memory-and-interface.md) and ADRs [0012](../docs/adr/0012-sessions-and-projects-behind-a-session-store.md) to [0016](../docs/adr/0016-single-stylesheet-one-motion-switch-pure-modules.md).
 
 ## Stack
 
-**React 19 + Vite + TypeScript**, no UI library and no animation library: motion is plain CSS. The interface is a port of the UI lab (`local_labo/`) described by its integration report and by SDD-005.
+**React 19 + Vite + TypeScript**, no UI library and no animation library: motion is plain CSS. The interface follows [SDD-005](../docs/design/sdd-005-product-model-memory-and-interface.md).
 
-```text
 ```text
 dev/
   token.ts, plugin.ts    # local dev proxy: fetches the owner's Entra token with `az` and adds it to /api calls
@@ -119,6 +109,14 @@ npm run build      # type-check, then build to dist/
 npm run dev        # dev server on http://localhost:5173
 ```
 
+### Without Azure: the mock backend
+
+```bash
+npm run dev:mock     # the web client on http://localhost:5173 and a mock backend with canned replies
+```
+
+`dev/mock-bff.mjs` is a stand-in for the backend (no dependency, no sign-in): Notion shown as connected, canned answers streamed in the real event vocabulary, an empty document list. Projects, sessions and voice are not mocked, so the client keeps its data on this device. The images of the [user guide](../docs/user-guide.md) are taken against it (`dev/screenshots.mjs`).
+
 ### Talking to the Azure BFF
 
 The BFF sits behind Container Apps authentication (Easy Auth) with Microsoft Entra ID. The dev server's proxy adds **your** Entra token to every `/api` request, so no token ever reaches the browser. Create `pwa/.env.local` (git-ignored):
@@ -135,11 +133,11 @@ Then sign in once with the Azure CLI (`az login`) and run `npm run dev`. The pro
 - Without `SA2_BFF_URL`, `/api` is not proxied (UI only).
 - Without `SA2_BFF_APP_ID_URI`, requests are proxied without a token (useful against a BFF started locally on `http://localhost:8090`).
 - The Notion consent callback (`/oauth/notion/callback`) is not proxied: Notion redirects the browser straight to the BFF's public URL.
-- Azure-side setup (app registration, Easy Auth, user assignment, BFF variables) is documented in [`docs/bff-pwa-api.md`](../docs/bff-pwa-api.md) and tracked in Task 26.35.
+- Azure-side setup (app registration, Easy Auth, user assignment, BFF variables) is documented in [`docs/bff-pwa-api.md`](../docs/bff-pwa-api.md) and in the [deployment guide](../docs/deployment.md).
 
 ## Hosting
 
-The app is **not hosted in Azure**: it runs on the owner's machine. Azure Static Web Apps is unavailable on the Azure for Students subscription (region policy), and the hosting decision belongs to Task 40. Until then, `npm run build` only validates that the app compiles; CI runs the tests and the build from the repository's CI workflow.
+The app is **not hosted in Azure**: it runs on the owner's machine. Azure Static Web Apps is unavailable on the Azure for Students subscription (region policy), and the hosting decision is still open. Until then, `npm run build` only validates that the app compiles; CI runs the tests and the build from the repository's CI workflow.
 
 When hosting is decided, response headers (a strict Content-Security-Policy such as `default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; frame-ancestors 'none'`, `X-Content-Type-Options`, `Referrer-Policy`) must be configured by the host: the former `staticwebapp.config.json` that carried them was removed.
 
@@ -166,11 +164,10 @@ Motion follows Emil Kowalski's design-engineering rules: strong custom easing cu
 
 ## Project references
 
-- [`savant-azurian` — AI runtime, BFF and this app](https://github.com/boussecsou/savant-azurian)
-- [Savant Azurian 2 — Notion project](https://app.notion.com/p/3b8eba09656f8059a384f1da1d984f9a)
-- [SDD-002 — Architecture & Azure Infrastructure](https://app.notion.com/p/3bfeba09656f8167bc3cf32a3b5d59f8)
-- [Task 26.4 — Text PWA](https://app.notion.com/p/3f1eba09656f8196841df3cde6428553)
+- [Savant Azurian: the repository](https://github.com/boussecsou/savant-azurian)
+- [Design record](../docs/design/README.md) and [architecture decisions](../docs/adr/README.md)
+- [Backend API for this app](../docs/bff-pwa-api.md)
 
 ## License
 
-See [LICENSE](LICENSE) for the repository's license terms.
+Apache-2.0: see [LICENSE](LICENSE). The rest of the repository is MIT-licensed.

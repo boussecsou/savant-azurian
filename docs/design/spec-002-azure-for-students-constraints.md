@@ -33,7 +33,7 @@ Support plans, Azure DevOps, paid Visual Studio, App Center, ExpressRoute, Marke
 - **Regions.** A policy limits deployment to a fixed list, so everything runs in Italy North ([ADR-0005](../adr/0005-region-and-shared-speech-resource.md)).
 - **Model quota.** Some model SKUs show zero quota ([ADR-0004](../adr/0004-reasoning-model-reference.md)).
 - **Front-end hosting.** Azure Static Web Apps is unavailable because it exists in none of the allowed regions, and a Marketplace plan is not an option ([ADR-0010](../adr/0010-monorepo-local-pwa-and-entra-owner-access.md)).
-- **Cost discipline.** Delete what you are not using: the paid resources (Azure AI Search above all) bill while they exist.
+- **Cost discipline.** The deployment guide gives a [cost estimate](../deployment.md#what-it-costs) and `azd down --purge` to stop spending.
 
 ## Reference
 

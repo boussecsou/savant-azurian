@@ -192,7 +192,7 @@ Without a filter, a question about "the VM" could bring back notes from an unrel
 | **Azure AI Search** | Hybrid search | The **Free** tier to start (limits to watch), with the history and documents indexes | The service the project wants to learn; Free is enough to validate |
 | **Embedding deployment** | Turn text into vectors | An embedding model such as `text-embedding-3-small`, on the existing Azure OpenAI or Foundry resource | Needed for search by meaning |
 
-**Identities and roles** (granted explicitly):
+**Identities and roles** (granted explicitly, see the [role matrix](../deployment.md#roles)):
 
 | Identity | Role | On |
 | --- | --- | --- |

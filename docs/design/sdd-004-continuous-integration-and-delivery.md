@@ -74,7 +74,7 @@ An unknown path delivers both components on purpose: it is the conservative fail
 - **A pipeline trap.** An `azd` extension check written as `azd ext list | grep -q "microsoft.foundry"` failed with exit status 141 under `set -o pipefail`: `grep -q` exits at the first match, the writer receives SIGPIPE, and pipefail reports it. The fix redirects to `/dev/null` instead. **Rule: never end a pipeline with `grep -q`, `head` or any early-exit reader under `pipefail`.**
 - **Trigger rule to remember.** Editing `.github/components.json`, `.agentignore`, `azure.yaml` or `pyproject.toml`, or the agent's runtime code, is a runtime change: merging it to `main` deploys the agent.
 - **The web client** is a **CI-only** component. `pwa/**` is declared non-runtime, a `pwa` check runs Node 22 (install, production audit, tests, build) with pinned actions and never receives an Azure token. A web-client-only change delivers nothing ([ADR-0010](../adr/0010-monorepo-local-pwa-and-entra-owner-access.md)).
-- **Not covered by CI or CD:** the owner's Entra authentication, role assignments and Container App configuration, which are manual or scripted steps.
+- **Not covered by CI or CD:** the owner's Entra authentication, role assignments and Container App configuration, which are manual or scripted steps ([deployment guide](../deployment.md)).
 - **Rollout caveat.** The first run after introducing component checkpoints may deploy the agent and publish the BFF, because no checkpoint exists yet. Merging and Azure rollout need explicit owner authorization.
 
 ## 5. Non-goals
