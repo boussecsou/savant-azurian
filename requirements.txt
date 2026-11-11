@@ -441,7 +441,7 @@ opentelemetry-semantic-conventions==0.65b0
     #   opentelemetry-instrumentation-wsgi
     #   opentelemetry-sdk
     #   opentelemetry-util-genai
-opentelemetry-util-genai==0.3b0
+opentelemetry-util-genai==1.3b0
     # via
     #   microsoft-opentelemetry
     #   opentelemetry-instrumentation-openai-agents-v2
