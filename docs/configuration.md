@@ -167,6 +167,7 @@ Configuration only, never secrets: GitHub signs in to Azure with OpenID Connect.
 | --- | --- | --- | --- | --- | --- |
 | `AZURE_CLIENT_ID` | ci | no | (required) | GitHub variable | Client ID of the identity GitHub Actions signs in with (the azd value `OIDC_CLIENT_ID`). Not a secret: the sign-in uses OpenID Connect. |
 | `AZD_ENV_NAME` | ci | no | `savant-ci` | GitHub variable | Name of the azd environment the CD workflow creates on the runner. |
+| `RELEASE_PLEASE_ENABLED` | ci | no | unset | GitHub variable | `true` turns on the release workflow, which opens a release pull request from the Conventional Commits history. It also needs the setting "Allow GitHub Actions to create and approve pull requests". |
 | `BFF_AUTO_PUBLISH` | ci | no | unset | GitHub variable | `true` publishes the BFF image automatically after a green CI on `main`. |
 
 ## Secrets
