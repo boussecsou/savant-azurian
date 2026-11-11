@@ -23,11 +23,19 @@ def main():
     environment = os.environ.copy()
     environment["NOTION_OAUTH_ENCRYPTION_KEY"] = base64.urlsafe_b64encode(os.urandom(32)).decode()
     container = docker(
-        "run", "--detach", "--rm", "--publish", "127.0.0.1::8090",
-        "--env", "NOTION_OAUTH_ENCRYPTION_KEY",
-        "--env", "NOTION_OAUTH_CALLBACK_URL=http://127.0.0.1:8090/oauth/notion/callback",
-        "--env", "NOTION_OAUTH_STORE_URL=sqlite:///tmp/bff-smoke/oauth.db",
-        image, env=environment,
+        "run",
+        "--detach",
+        "--rm",
+        "--publish",
+        "127.0.0.1::8090",
+        "--env",
+        "NOTION_OAUTH_ENCRYPTION_KEY",
+        "--env",
+        "NOTION_OAUTH_CALLBACK_URL=http://127.0.0.1:8090/oauth/notion/callback",
+        "--env",
+        "NOTION_OAUTH_STORE_URL=sqlite:///tmp/bff-smoke/oauth.db",
+        image,
+        env=environment,
     )
     try:
         port = docker("port", container, "8090/tcp").rsplit(":", 1)[1]
@@ -42,9 +50,14 @@ def main():
                 if time.monotonic() >= deadline:
                     raise RuntimeError("BFF image did not become ready.") from None
                 time.sleep(1)
-        docker("exec", container, "python", "-c",
-               "from importlib.metadata import distributions; "
-               "assert 'azure-keyvault-secrets' not in {d.metadata['Name'].lower() for d in distributions()}")
+        docker(
+            "exec",
+            container,
+            "python",
+            "-c",
+            "from importlib.metadata import distributions; "
+            "assert 'azure-keyvault-secrets' not in {d.metadata['Name'].lower() for d in distributions()}",
+        )
         print("BFF image: /readiness HTTP 200, port 8090 exposed, Key Vault SDK absent.")
     finally:
         subprocess.run(["docker", "rm", "--force", container], capture_output=True, timeout=30)

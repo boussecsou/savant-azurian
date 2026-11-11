@@ -14,9 +14,16 @@ WRAPPER = "call_tool"
 CONSENT_TOOL = "oauth_consent_required"
 
 # Outlook.com connector operations, matched after the "<server>___outlook_" prefix.
-OUTLOOK_READS = frozenset({
-    "GetEmails", "GetEmailsV2", "GetEmail", "GetAttachment", "CalendarGetTable", "ContactGetTable",
-})
+OUTLOOK_READS = frozenset(
+    {
+        "GetEmails",
+        "GetEmailsV2",
+        "GetEmail",
+        "GetAttachment",
+        "CalendarGetTable",
+        "ContactGetTable",
+    }
+)
 # Recoverable bookkeeping on the owner's own mail: no confirmation.
 OUTLOOK_REVERSIBLE = frozenset({"MarkAsRead", "Flag", "Move"})
 OUTLOOK_SENDS = frozenset({"SendEmail", "SendEmailV2", "ReplyToV3"})

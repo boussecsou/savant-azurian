@@ -1,8 +1,9 @@
 """Document search: the project is imposed by the server, results are outside data. No Azure call."""
+
 import asyncio
 import hashlib
-import time
 import json
+import time
 
 import httpx
 import pytest
@@ -33,16 +34,26 @@ def test_azure_query_is_hybrid_semantic_filtered_and_keyless():
 
     def provider(request):
         seen.append(request)
-        return httpx.Response(200, json={"value": [
-            {"document_id": "d1", "title": "plan.pdf", "chunk": "long text " * 500,
-             "@search.captions": [{"text": "the caption"}]},
-            {"document_id": "d2", "title": "notes.md", "chunk": "x" * 5000},
-        ]})
+        return httpx.Response(
+            200,
+            json={
+                "value": [
+                    {
+                        "document_id": "d1",
+                        "title": "plan.pdf",
+                        "chunk": "long text " * 500,
+                        "@search.captions": [{"text": "the caption"}],
+                    },
+                    {"document_id": "d2", "title": "notes.md", "chunk": "x" * 5000},
+                ]
+            },
+        )
 
     async def run():
         async with httpx.AsyncClient(transport=httpx.MockTransport(provider)) as client:
-            search = documents.AzureDocumentSearch("https://ais-sa2.search.windows.net/", "sa2-docs",
-                                                   lambda: "token", client=client)
+            search = documents.AzureDocumentSearch(
+                "https://ais-sa2.search.windows.net/", "sa2-docs", lambda: "token", client=client
+            )
             return await search.search("budget", project_id="main")
 
     results = asyncio.run(run())
@@ -65,6 +76,7 @@ def test_a_throttled_search_is_a_transient_error():
     with pytest.raises(httpx.HTTPStatusError) as caught:
         asyncio.run(run())
     from savant import reliability
+
     assert reliability.is_transient(caught.value)
 
 
@@ -88,8 +100,13 @@ class AngleSearch:
     async def search(self, query, *, project_id, top=documents.MAX_RESULTS):
         self.calls.append(query)
         await asyncio.sleep(0.05)
-        return [{"document_id": SHARED, "title": "guide.pdf", "passage": "found by all"},
-                *({"document_id": doc_id(f"{query}-{i}"), "title": f"{query}.pdf", "passage": f"{query} #{i}"} for i in range(top))]
+        return [
+            {"document_id": SHARED, "title": "guide.pdf", "passage": "found by all"},
+            *(
+                {"document_id": doc_id(f"{query}-{i}"), "title": f"{query}.pdf", "passage": f"{query} #{i}"}
+                for i in range(top)
+            ),
+        ]
 
 
 def run_tool(search, **arguments):
@@ -123,7 +140,7 @@ def test_a_single_query_still_works_as_before():
 
 def test_the_angles_are_limited_and_blank_ones_are_ignored():
     search = AngleSearch()
-    with pytest.raises(Exception):
+    with pytest.raises(Exception):  # noqa: B017 - the tool wrapper may raise any validation error
         run_tool(search, query="a", more_queries=["b", "c", "d", "e"])
     run_tool(search, query="a", more_queries=["  ", "a", "b"])
     assert sorted(search.calls) == ["a", "b"]  # blank and repeated angles cost nothing
@@ -133,9 +150,12 @@ def test_a_document_the_owner_cannot_see_is_never_cited():
     # A file dropped by hand (non-standard id) is not in the owner's list of sources: never a source.
     class Mixed:
         async def search(self, query, *, project_id, top=documents.MAX_RESULTS):
-            return [{"document_id": "test-doc", "title": "savant-test.md", "passage": "hidden"},
-                    {"document_id": "", "title": "x.md", "passage": "no id"},
-                    {"document_id": SHARED, "title": "guide.pdf", "passage": "visible"}]
+            return [
+                {"document_id": "test-doc", "title": "savant-test.md", "passage": "hidden"},
+                {"document_id": "", "title": "x.md", "passage": "no id"},
+                {"document_id": SHARED, "title": "guide.pdf", "passage": "visible"},
+            ]
+
     out = run_tool(Mixed(), query="sources")
     assert [r["title"] for r in out["results"]] == ["guide.pdf"]
 
@@ -154,8 +174,11 @@ class FakeSearch:
     async def search(self, query, *, project_id, top=documents.MAX_RESULTS):
         self.calls.append((query, project_id))
         await asyncio.sleep(0.01)
-        return self.results if self.results is not None else [
-            {"document_id": doc_id("savant-test"), "title": "savant-test.md", "passage": f"passage for {query}"}]
+        return (
+            self.results
+            if self.results is not None
+            else [{"document_id": doc_id("savant-test"), "title": "savant-test.md", "passage": f"passage for {query}"}]
+        )
 
 
 class OAuth:
@@ -176,22 +199,34 @@ def graph_with(search, script, offered):
             async def ainvoke(self, messages):
                 offered.append(messages[0].content)
                 return queue.pop(0)
+
         return Model()
 
-    return build_direct_chat_graph(Settings("https://model/", "m"), factory, MemorySaver(), OAuth(),
-                                   identity_provider=lambda: "owner", document_search=search)
+    return build_direct_chat_graph(
+        Settings("https://model/", "m"),
+        factory,
+        MemorySaver(),
+        OAuth(),
+        identity_provider=lambda: "owner",
+        document_search=search,
+    )
 
 
 def calls(*queries):
-    return AIMessage(content="", tool_calls=[{"name": documents.TOOL_NAME, "args": {"query": q}, "id": f"s{i}"}
-                                             for i, q in enumerate(queries)])
+    return AIMessage(
+        content="",
+        tool_calls=[{"name": documents.TOOL_NAME, "args": {"query": q}, "id": f"s{i}"} for i, q in enumerate(queries)],
+    )
 
 
 def test_searches_use_the_request_project_run_side_by_side_and_come_back_as_outside_data():
     search, offered = FakeSearch(), []
     graph = graph_with(search, [calls("budget", "planning"), AIMessage(content="D'après savant-test.md…")], offered)
-    result = asyncio.run(graph.ainvoke({"messages": ["Que disent mes documents ?"], "project_id": "main"},
-                                       {"configurable": {"thread_id": "t"}}))
+    result = asyncio.run(
+        graph.ainvoke(
+            {"messages": ["Que disent mes documents ?"], "project_id": "main"}, {"configurable": {"thread_id": "t"}}
+        )
+    )
     assert sorted(search.calls) == [("budget", "main"), ("planning", "main")]
     assert documents.TOOL_NAME in offered[0] and "Project documents" in offered[1]
     tools = [m for m in result["messages"] if m.type == "tool"]
@@ -201,8 +236,10 @@ def test_searches_use_the_request_project_run_side_by_side_and_come_back_as_outs
 
 def test_the_model_cannot_choose_the_project():
     search, offered = FakeSearch(), []
-    sneaky = AIMessage(content="", tool_calls=[{"name": documents.TOOL_NAME, "id": "s",
-                                                "args": {"query": "budget", "project_id": "other"}}])
+    sneaky = AIMessage(
+        content="",
+        tool_calls=[{"name": documents.TOOL_NAME, "id": "s", "args": {"query": "budget", "project_id": "other"}}],
+    )
     graph = graph_with(search, [sneaky, AIMessage(content="ok")], offered)
     asyncio.run(graph.ainvoke({"messages": ["budget ?"], "project_id": "main"}, {"configurable": {"thread_id": "t"}}))
     # The extra argument is refused by the schema or ignored: never another project.

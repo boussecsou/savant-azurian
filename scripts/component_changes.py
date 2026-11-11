@@ -1,13 +1,14 @@
 """One declarative ownership policy for CI, release planning and BFF packaging."""
+
 from __future__ import annotations
 
 import argparse
-from fnmatch import fnmatchcase
 import json
 import os
-from pathlib import Path
 import re
 import subprocess
+from fnmatch import fnmatchcase
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 MANIFEST = ".github/components.json"

@@ -69,7 +69,9 @@ def test_toolbox_endpoint_selects_exact_project_without_enabling_notion(monkeypa
     monkeypatch.setenv("AZURE_OPENAI_BASE_URL", "https://model/openai/v1")
     monkeypatch.setenv("AZURE_AI_MODEL_DEPLOYMENT_NAME", "model")
     monkeypatch.setenv("NOTION_MCP_ENABLED", "false")
-    endpoint = f"https://account.services.ai.azure.com/api/projects/project/toolboxes/lab{version_path}/mcp?api-version=v1"
+    endpoint = (
+        f"https://account.services.ai.azure.com/api/projects/project/toolboxes/lab{version_path}/mcp?api-version=v1"
+    )
     monkeypatch.setenv("TOOLBOX_ENDPOINT", endpoint)
     settings = Settings.from_env()
     assert settings.toolbox_endpoint == endpoint
@@ -98,20 +100,26 @@ def chat_env(monkeypatch):
 
 def test_chat_oauth_can_coexist_with_toolbox(monkeypatch):
     chat_env(monkeypatch)
-    monkeypatch.setenv("TOOLBOX_ENDPOINT", "https://account.services.ai.azure.com/api/projects/project/toolboxes/lab/mcp?api-version=v1")
+    monkeypatch.setenv(
+        "TOOLBOX_ENDPOINT",
+        "https://account.services.ai.azure.com/api/projects/project/toolboxes/lab/mcp?api-version=v1",
+    )
     settings = Settings.from_env()
     assert settings.notion_backend == "direct"
     assert settings.notion_oauth_store_url.endswith("oauth.enc")
 
 
-@pytest.mark.parametrize("name,value,error", [
-    ("NOTION_OAUTH_CALLBACK_URL", "http://public.example/oauth/notion/callback", "CALLBACK_URL"),
-    ("NOTION_OAUTH_CALLBACK_URL", "https://callback.example/wrong", "CALLBACK_URL"),
-    ("NOTION_LOCAL_USER_ID", "shared-user", "LOCAL_USER_ID"),
-    ("NOTION_OAUTH_STORE_URL", "sqlite:///tmp/oauth.db", "shared"),
-    ("NOTION_MCP_URL", "https://attacker.example/mcp", "official"),
-    ("NOTION_BACKEND", "foundry", "direct"),
-])
+@pytest.mark.parametrize(
+    "name,value,error",
+    [
+        ("NOTION_OAUTH_CALLBACK_URL", "http://public.example/oauth/notion/callback", "CALLBACK_URL"),
+        ("NOTION_OAUTH_CALLBACK_URL", "https://callback.example/wrong", "CALLBACK_URL"),
+        ("NOTION_LOCAL_USER_ID", "shared-user", "LOCAL_USER_ID"),
+        ("NOTION_OAUTH_STORE_URL", "sqlite:///tmp/oauth.db", "shared"),
+        ("NOTION_MCP_URL", "https://attacker.example/mcp", "official"),
+        ("NOTION_BACKEND", "foundry", "direct"),
+    ],
+)
 def test_chat_oauth_rejects_unsafe_configuration(monkeypatch, name, value, error):
     chat_env(monkeypatch)
     monkeypatch.setenv(name, value)
@@ -121,7 +129,9 @@ def test_chat_oauth_rejects_unsafe_configuration(monkeypatch, name, value, error
 
 def test_document_search_is_optional_and_validated(monkeypatch):
     import pytest as _pytest
+
     from savant.config import Settings as _Settings
+
     monkeypatch.setattr("savant.config.load_dotenv", lambda **_: None)
     monkeypatch.setenv("AZURE_OPENAI_BASE_URL", "https://model/")
     monkeypatch.setenv("AZURE_AI_MODEL_DEPLOYMENT_NAME", "m")

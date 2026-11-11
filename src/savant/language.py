@@ -4,6 +4,7 @@ Server-written sentences (confirmation questions, outcomes) follow the owner's l
 detection is a cheap word and accent count, not a model call: it must be instant and can never
 fail. No signal (a bare "ok") returns None, so the caller keeps the language already in use.
 """
+
 from __future__ import annotations
 
 import re
@@ -14,16 +15,18 @@ _FRENCH_WORDS = frozenset(
     "confirme confirmer annule annuler accord stp svp peux peut veux voudrais ce cette cet mon ma mes ton "
     "ta tes et pour avec dans sur que qui bien bon voila ca ça super vas lance fais fait efface retire "
     "rapport page rendez-vous aussi mais ou où quoi comment pourquoi quel quelle quels quelles ai suis "
-    "sont c j l d s n qu m t".split())
+    "sont c j l d s n qu m t".split()
+)
 _ENGLISH_WORDS = frozenset(
     "the you your is are was yes no please delete remove go ahead do does it this that with for and to my "
     "can could would want confirm cancel sure okay thanks thank what which who how why have has i me we "
-    "they of in on at be not just report page meeting also but or".split())
+    "they of in on at be not just report page meeting also but or".split()
+)
 _ACCENTS = frozenset("àâäçéèêëîïôöùûüÿœ")
 
 
 def detect_language(text: object) -> str | None:
-    """"fr" or "en" when the text leans clearly one way, else None."""
+    """ "fr" or "en" when the text leans clearly one way, else None."""
     if not isinstance(text, str) or not text.strip():
         return None
     lowered = text.lower()
@@ -50,8 +53,10 @@ def language_note(user_texts) -> str:
     for text in user_texts:
         name = _LANGUAGE_NAMES.get(detect_language(text) or "")
         if name:
-            return (f"\nLanguage: the owner writes in {name}. Answer entirely in {name}. Never mix in another "
-                    "language, not even one word or phrase (names, titles and quoted text excepted).")
+            return (
+                f"\nLanguage: the owner writes in {name}. Answer entirely in {name}. Never mix in another "
+                "language, not even one word or phrase (names, titles and quoted text excepted)."
+            )
     return ""
 
 

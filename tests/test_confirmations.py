@@ -27,24 +27,42 @@ def test_several_pages_and_databases_are_counted():
     assert many.startswith("Tu veux que je mette ces 2 pages à la corbeille : [A](") and "[2](" in many
     database = confirmation_text(delete([PAGE], {PAGE: "Tâches"}, "notion-delete-databases", "database_ids"), "fr")
     assert "la base de données [Tâches](" in database and "avec toutes ses lignes" in database
-    assert "and all its rows" in confirmation_text(delete([PAGE], None, "notion-delete-databases", "database_ids"), "en")
+    assert "and all its rows" in confirmation_text(
+        delete([PAGE], None, "notion-delete-databases", "database_ids"), "en"
+    )
 
 
 def test_an_edit_is_worded_from_the_exact_arguments():
-    replace = {"name": "notion-update-page", "labels": {PAGE: "Notes"},
-               "args": {"page_id": PAGE, "command": "replace_content", "new_str": "Bonjour"}}
-    assert confirmation_text(replace, "fr") == f"Tu veux que je remplace tout le contenu de [Notes]({LINK}) par « Bonjour » ?"
-    update = {"name": "notion-update-page", "labels": {},
-              "args": {"page_id": PAGE, "command": "update_content",
-                       "content_updates": [{"old_str": "a", "new_str": "b"}, {"old_str": "c", "new_str": ""}]}}
+    replace = {
+        "name": "notion-update-page",
+        "labels": {PAGE: "Notes"},
+        "args": {"page_id": PAGE, "command": "replace_content", "new_str": "Bonjour"},
+    }
+    assert (
+        confirmation_text(replace, "fr")
+        == f"Tu veux que je remplace tout le contenu de [Notes]({LINK}) par « Bonjour » ?"
+    )
+    update = {
+        "name": "notion-update-page",
+        "labels": {},
+        "args": {
+            "page_id": PAGE,
+            "command": "update_content",
+            "content_updates": [{"old_str": "a", "new_str": "b"}, {"old_str": "c", "new_str": ""}],
+        },
+    }
     assert confirmation_text(update, "en") == (
-        f"In [this page]({LINK}), do you want me to replace “a” with “b”, then remove “c”?")
+        f"In [this page]({LINK}), do you want me to replace “a” with “b”, then remove “c”?"
+    )
 
 
 def test_anything_else_falls_back_to_a_complete_localized_question():
     operation = {"name": "notion-create-pages", "args": {"pages": ["x"]}}
     assert confirmation_text(operation, "fr") is None
-    assert generic_confirmation(operation, "fr") == 'Tu confirmes l\'opération `notion-create-pages` avec ces paramètres : {"pages": ["x"]} ?'
+    assert (
+        generic_confirmation(operation, "fr")
+        == 'Tu confirmes l\'opération `notion-create-pages` avec ces paramètres : {"pages": ["x"]} ?'
+    )
     assert generic_confirmation(operation, None).startswith("Do you confirm `notion-create-pages`")
 
 
@@ -58,12 +76,16 @@ def test_outcomes_follow_the_language():
 
 def test_the_outcome_is_a_plain_sentence_about_what_was_done():
     titled = delete([PAGE], {PAGE: "ADR-017 — Azure AI Search"})
-    assert result_text(titled, "fr", False) == "C'est fait, j'ai mis la page « ADR-017 — Azure AI Search » à la corbeille."
+    assert (
+        result_text(titled, "fr", False) == "C'est fait, j'ai mis la page « ADR-017 — Azure AI Search » à la corbeille."
+    )
     assert result_text(titled, "en", False) == "Done: I moved the page “ADR-017 — Azure AI Search” to the trash."
     assert result_text(delete([PAGE]), "fr", False) == "C'est fait, j'ai mis la page à la corbeille."
     assert result_text(delete([PAGE, OTHER]), "fr", False) == "C'est fait, j'ai mis les 2 pages à la corbeille."
-    assert result_text(delete([PAGE], name="notion-delete-databases", key="database_ids"), "en", False) == \
-        "Done: I moved the database to the trash."
+    assert (
+        result_text(delete([PAGE], name="notion-delete-databases", key="database_ids"), "en", False)
+        == "Done: I moved the database to the trash."
+    )
     edit = {"name": "notion-update-page", "args": {"page_id": PAGE}, "labels": {PAGE: "Plan"}}
     assert result_text(edit, "fr", False) == "C'est fait, j'ai modifié la page « Plan »."
     assert result_text({"name": "code_interpreter", "args": {}}, "fr", False) == "C'est fait."

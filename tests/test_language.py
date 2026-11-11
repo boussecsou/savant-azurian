@@ -3,17 +3,20 @@ import pytest
 from savant.language import clean_label, detect_language, language_note
 
 
-@pytest.mark.parametrize("text,expected", [
-    ("Je confirme.", "fr"),
-    ("Oui", "fr"),
-    ("Supprime le rapport technique de mon VPS", "fr"),
-    ("Tu peux supprimer le rendez-vous Google Meet ?", "fr"),
-    ("yes, go ahead", "en"),
-    ("Delete the technical report please", "en"),
-    ("ok", None),
-    ("", None),
-    (None, None),
-])
+@pytest.mark.parametrize(
+    "text,expected",
+    [
+        ("Je confirme.", "fr"),
+        ("Oui", "fr"),
+        ("Supprime le rapport technique de mon VPS", "fr"),
+        ("Tu peux supprimer le rendez-vous Google Meet ?", "fr"),
+        ("yes, go ahead", "en"),
+        ("Delete the technical report please", "en"),
+        ("ok", None),
+        ("", None),
+        (None, None),
+    ],
+)
 def test_language_follows_the_words_and_accents(text, expected):
     assert detect_language(text) == expected
 

@@ -1,13 +1,14 @@
 """CosmosStore against a fake Cosmos client: partition keys, system fields and double deletes."""
+
 import asyncio
 
+import azure.cosmos.aio as cosmos_aio
 import pytest
 from azure.cosmos.exceptions import CosmosResourceNotFoundError
+from test_bff_api import AGENT_URL, OBJECT_ID, OWNER
 
-import azure.cosmos.aio as cosmos_aio
 from savant.bff_api import ApiSettings
 from savant.workspace_store import CosmosStore
-from test_bff_api import OBJECT_ID, OWNER, AGENT_URL
 
 
 class FakeContainer:
@@ -25,6 +26,7 @@ class FakeContainer:
         async def gen():
             for value in values:
                 yield value
+
         return gen()
 
     async def upsert_item(self, item):
@@ -45,11 +47,11 @@ class FakeClient:
 
     def get_database_client(self, name):
         assert name == "sa2"
-        client = self
 
         class Database:
             def get_container_client(self, container):
                 return FakeClient.containers.setdefault(container, FakeContainer(container))
+
         return Database()
 
     async def close(self):
@@ -67,6 +69,7 @@ def test_system_fields_never_leave_the_store(store):
     async def scenario():
         await store.put_project({"id": "p", "name": "P"})
         return await store.projects()
+
     assert asyncio.run(scenario()) == [{"id": "p", "name": "P"}]
 
 
@@ -78,6 +81,7 @@ def test_messages_are_read_and_deleted_by_their_session_partition(store):
         assert [m["id"] for m in await store.messages("s1")] == ["m1", "m2"]
         await store.delete_session("s1")
         await store.delete_session("s1")  # already gone: not an error
+
     asyncio.run(scenario())
     messages = FakeClient.containers["messages"]
     assert set(messages.items) == {"m3"}
@@ -92,8 +96,12 @@ def test_close_closes_the_client(store):
 
 
 def env(monkeypatch, **values):
-    for key, value in {"NOTION_OWNER_ID": OWNER, "AGENT_RESPONSES_URL": AGENT_URL,
-                       "BFF_OWNER_OBJECT_ID": OBJECT_ID, **values}.items():
+    for key, value in {
+        "NOTION_OWNER_ID": OWNER,
+        "AGENT_RESPONSES_URL": AGENT_URL,
+        "BFF_OWNER_OBJECT_ID": OBJECT_ID,
+        **values,
+    }.items():
         monkeypatch.setenv(key, value)
 
 
@@ -102,9 +110,16 @@ def test_cosmos_settings_default_off_and_accept_only_an_azure_account_origin(mon
     assert ApiSettings.from_env().cosmos_endpoint == ""
     env(monkeypatch, COSMOS_ENDPOINT="https://cosmos-db-sa2.documents.azure.com:443/")
     settings = ApiSettings.from_env()
-    assert (settings.cosmos_endpoint, settings.cosmos_database) == ("https://cosmos-db-sa2.documents.azure.com:443", "sa2")
-    for bad in ("http://cosmos-db-sa2.documents.azure.com", "https://evil.example.com",
-                "https://a.documents.azure.com/path", "https://u:p@a.documents.azure.com"):
+    assert (settings.cosmos_endpoint, settings.cosmos_database) == (
+        "https://cosmos-db-sa2.documents.azure.com:443",
+        "sa2",
+    )
+    for bad in (
+        "http://cosmos-db-sa2.documents.azure.com",
+        "https://evil.example.com",
+        "https://a.documents.azure.com/path",
+        "https://u:p@a.documents.azure.com",
+    ):
         env(monkeypatch, COSMOS_ENDPOINT=bad)
         with pytest.raises(RuntimeError, match="COSMOS_ENDPOINT"):
             ApiSettings.from_env()

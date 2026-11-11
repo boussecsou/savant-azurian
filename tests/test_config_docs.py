@@ -1,7 +1,7 @@
 """Keep every configuration surface in step with docs/configuration.md.
 
 Surfaces checked: the code (environment reads), `.env.example`, `azure.yaml`, the Bicep outputs and
-parameters (when `infra/` exists), and the GitHub workflows. Adding a variable to any of them without describing it in
+parameters, and the GitHub workflows. Adding a variable to any of them without describing it in
 `docs/configuration.md` fails this test, so a new contributor never meets an undocumented setting.
 """
 
@@ -65,12 +65,17 @@ def read_by_code() -> dict[str, set[str]]:
                 # Tuples of required names, such as _SSH_REQUIRED = ("SSH_HOST", ...).
                 targets = [t.id for t in node.targets if isinstance(t, ast.Name)]
                 if any(t.endswith("_REQUIRED") for t in targets) and isinstance(node.value, (ast.Tuple, ast.List)):
-                    names.update(e.value for e in node.value.elts if isinstance(e, ast.Constant) and isinstance(e.value, str))
+                    names.update(
+                        e.value for e in node.value.elts if isinstance(e, ast.Constant) and isinstance(e.value, str)
+                    )
         if path.name == "search_setup.py":
             # The pipeline script validates a dict keyed by variable names.
             names.update(
-                node.value for node in ast.walk(tree)
-                if isinstance(node, ast.Constant) and isinstance(node.value, str) and re.fullmatch(r"SEARCH_[A-Z_]+", node.value)
+                node.value
+                for node in ast.walk(tree)
+                if isinstance(node, ast.Constant)
+                and isinstance(node.value, str)
+                and re.fullmatch(r"SEARCH_[A-Z_]+", node.value)
             )
         for name in names:
             found.setdefault(name, set()).add(str(path.relative_to(ROOT)))
@@ -112,7 +117,9 @@ def test_azure_yaml_reads_only_documented_variables():
     text = (ROOT / "azure.yaml").read_text(encoding="utf-8")
     used = set(re.findall(rf"\$\{{({NAME})\}}", text))
     assert used, "azure.yaml should be parameterized with ${VAR}"
-    assert not sorted(used - set(documented())), f"azure.yaml uses undocumented variables: {sorted(used - set(documented()))}"
+    assert not sorted(used - set(documented())), (
+        f"azure.yaml uses undocumented variables: {sorted(used - set(documented()))}"
+    )
 
 
 def test_azure_yaml_keeps_no_personal_values():
@@ -124,8 +131,6 @@ def test_azure_yaml_keeps_no_personal_values():
 
 
 def test_bicep_outputs_and_inputs_are_documented():
-    if not (ROOT / "infra" / "main.bicep").exists():
-        pytest.skip("no infra/ folder yet")
     main = (ROOT / "infra" / "main.bicep").read_text(encoding="utf-8")
     params = (ROOT / "infra" / "main.bicepparam").read_text(encoding="utf-8")
     outputs = set(re.findall(rf"^output ({NAME}) ", main, re.MULTILINE))
@@ -157,4 +162,6 @@ def test_setup_scripts_are_dry_run_by_default(script):
     if script.name == "_lib.sh":
         assert "APPLY=0" in text
     else:
-        assert "parse_common_flags" in text and "finish" in text, f"{script.name} must support --apply and default to a dry run"
+        assert "parse_common_flags" in text and "finish" in text, (
+            f"{script.name} must support --apply and default to a dry run"
+        )

@@ -6,26 +6,27 @@ headers (external requests cannot set them). The BFF only accepts the one Entra
 object ID it is configured with. The owner key used for Notion grants is a separate,
 fixed server-side value; nothing sent by the client can choose it.
 """
+
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 import hmac
 import json
 import logging
 import os
 import re
 import time
+from dataclasses import dataclass, field
 from typing import Literal
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
+import httpx
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, RedirectResponse, StreamingResponse
-import httpx
 from pydantic import BaseModel, Field
 
-from savant.correlation import correlation_id
 from savant.bff_workspace import create_workspace_router
+from savant.correlation import correlation_id
 from savant.notion_oauth import NotionOAuth, OAuthError
 from savant.workspace import WorkspaceError, WorkspaceService
 
@@ -43,10 +44,7 @@ AGENT_TIMEOUT_SECONDS = 120
 STREAM_DEADLINE_SECONDS = 220
 # Same text as savant.health.RUNTIME_SMOKE_PROMPT (tests keep them equal): the BFF image does not
 # ship that module. The agent answers it from the tool-free path, with no Notion and no OAuth.
-WARMUP_PROMPT = (
-    "Savant runtime model probe. Reply with exactly SA2_RUNTIME_MODEL_OK. "
-    "Do not call any tools."
-)
+WARMUP_PROMPT = "Savant runtime model probe. Reply with exactly SA2_RUNTIME_MODEL_OK. Do not call any tools."
 WARMUP_EXPECTED = "SA2_RUNTIME_MODEL_OK"
 _CONVERSATION_ID = r"^[A-Za-z0-9_.:-]{1,256}$"
 _SAFE_ID = re.compile(r"[A-Za-z0-9_.:-]{1,256}")
@@ -82,7 +80,7 @@ class ApiSettings:
     search_indexer: str = field(default="sa2-docs-indexer", kw_only=True)
 
     @classmethod
-    def from_env(cls) -> "ApiSettings | None":
+    def from_env(cls) -> ApiSettings | None:
         """Return None unless the PWA API is configured; the callback keeps working alone."""
         owner = os.environ.get("NOTION_OWNER_ID", "").strip()
         url = os.environ.get("AGENT_RESPONSES_URL", "").strip()
@@ -94,11 +92,19 @@ class ApiSettings:
         if not owner:
             raise RuntimeError("NOTION_OWNER_ID is required when AGENT_RESPONSES_URL is set.")
         if not _OBJECT_ID.fullmatch(object_id):
-            raise RuntimeError("BFF_OWNER_OBJECT_ID must be the owner's Microsoft Entra object ID (a GUID) "
-                               "when AGENT_RESPONSES_URL is set.")
+            raise RuntimeError(
+                "BFF_OWNER_OBJECT_ID must be the owner's Microsoft Entra object ID (a GUID) "
+                "when AGENT_RESPONSES_URL is set."
+            )
         parsed = urlsplit(url)
-        if (parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password
-                or parsed.fragment or not parsed.hostname.endswith(".azure.com")):
+        if (
+            parsed.scheme != "https"
+            or not parsed.hostname
+            or parsed.username
+            or parsed.password
+            or parsed.fragment
+            or not parsed.hostname.endswith(".azure.com")
+        ):
             raise RuntimeError("AGENT_RESPONSES_URL must be an HTTPS Azure URL.")
         url = _with_api_version(parsed)
         speech_endpoint = os.environ.get("SPEECH_ENDPOINT", "").strip().rstrip("/")
@@ -107,31 +113,59 @@ class ApiSettings:
             raise RuntimeError("SPEECH_ENDPOINT and SPEECH_REGION must be set together.")
         if speech_endpoint:
             speech = urlsplit(speech_endpoint)
-            if (speech.scheme != "https" or not speech.hostname
-                    or not speech.hostname.endswith(".cognitiveservices.azure.com")
-                    or speech.path or speech.query or speech.fragment or speech.username):
-                raise RuntimeError("SPEECH_ENDPOINT must be an HTTPS *.cognitiveservices.azure.com custom-domain origin.")
+            if (
+                speech.scheme != "https"
+                or not speech.hostname
+                or not speech.hostname.endswith(".cognitiveservices.azure.com")
+                or speech.path
+                or speech.query
+                or speech.fragment
+                or speech.username
+            ):
+                raise RuntimeError(
+                    "SPEECH_ENDPOINT must be an HTTPS *.cognitiveservices.azure.com custom-domain origin."
+                )
             if not _SPEECH_REGION.fullmatch(speech_region):
                 raise RuntimeError("SPEECH_REGION must be an Azure region name such as italynorth.")
         cosmos_endpoint = os.environ.get("COSMOS_ENDPOINT", "").strip().rstrip("/")
         cosmos_database = os.environ.get("COSMOS_DATABASE", "sa2").strip()
         if cosmos_endpoint:
             cosmos = urlsplit(cosmos_endpoint)
-            if (cosmos.scheme != "https" or not cosmos.hostname or not cosmos.hostname.endswith(".documents.azure.com")
-                    or cosmos.path not in ("", "/") or cosmos.query or cosmos.fragment or cosmos.username):
+            if (
+                cosmos.scheme != "https"
+                or not cosmos.hostname
+                or not cosmos.hostname.endswith(".documents.azure.com")
+                or cosmos.path not in ("", "/")
+                or cosmos.query
+                or cosmos.fragment
+                or cosmos.username
+            ):
                 raise RuntimeError("COSMOS_ENDPOINT must be an HTTPS *.documents.azure.com account origin.")
             if not _SAFE_ID.fullmatch(cosmos_database):
                 raise RuntimeError("COSMOS_DATABASE must be a plain database name such as sa2.")
         if origin:
             parts = urlsplit(origin)
             local = parts.hostname in {"localhost", "127.0.0.1"}
-            if (parts.scheme not in ({"https", "http"} if local else {"https"}) or not parts.hostname
-                    or parts.path or parts.query or parts.fragment or parts.username):
+            if (
+                parts.scheme not in ({"https", "http"} if local else {"https"})
+                or not parts.hostname
+                or parts.path
+                or parts.query
+                or parts.fragment
+                or parts.username
+            ):
                 raise RuntimeError("PWA_ORIGIN must be an origin (HTTPS, or HTTP on localhost).")
-        return cls(owner, url, origin, owner_object_id=object_id,
-                   speech_endpoint=speech_endpoint, speech_region=speech_region,
-                   cosmos_endpoint=cosmos_endpoint, cosmos_database=cosmos_database,
-                   **_documents_settings(bool(cosmos_endpoint)))
+        return cls(
+            owner,
+            url,
+            origin,
+            owner_object_id=object_id,
+            speech_endpoint=speech_endpoint,
+            speech_region=speech_region,
+            cosmos_endpoint=cosmos_endpoint,
+            cosmos_database=cosmos_database,
+            **_documents_settings(bool(cosmos_endpoint)),
+        )
 
 
 _NAME = re.compile(r"[a-z0-9][a-z0-9-]{1,62}")
@@ -152,9 +186,11 @@ def _documents_settings(has_workspace: bool) -> dict:
         raise RuntimeError("DOCUMENTS_ACCOUNT_URL must be https://<account>.blob.core.windows.net.")
     if not re.fullmatch(r"https://[a-z0-9][a-z0-9-]{0,59}\.search\.windows\.net", search):
         raise RuntimeError("SEARCH_ENDPOINT must be https://<service>.search.windows.net.")
-    names = {"documents_container": os.environ.get("DOCUMENTS_CONTAINER", "documents").strip(),
-             "search_index": os.environ.get("SEARCH_INDEX", "sa2-docs").strip(),
-             "search_indexer": os.environ.get("SEARCH_INDEXER", "sa2-docs-indexer").strip()}
+    names = {
+        "documents_container": os.environ.get("DOCUMENTS_CONTAINER", "documents").strip(),
+        "search_index": os.environ.get("SEARCH_INDEX", "sa2-docs").strip(),
+        "search_indexer": os.environ.get("SEARCH_INDEXER", "sa2-docs-indexer").strip(),
+    }
     if not all(_NAME.fullmatch(value) for value in names.values()):
         raise RuntimeError("DOCUMENTS_CONTAINER, SEARCH_INDEX and SEARCH_INDEXER must be plain names.")
     return {"documents_account_url": account, "search_endpoint": search, **names}
@@ -203,14 +239,17 @@ def _owner_check(settings: ApiSettings):
         idp = request.headers.get(PRINCIPAL_IDP_HEADER, "").strip().lower()
         if idp != ENTRA_IDP or not hmac.compare_digest(caller.encode(), settings.owner_object_id.encode()):
             raise HTTPException(403)
+
     return require_owner
 
 
 def _reply_text(body: dict) -> str:
     return "".join(
         part.get("text", "")
-        for item in body.get("output", []) if isinstance(item, dict) and item.get("type") == "message"
-        for part in item.get("content", []) if isinstance(part, dict) and part.get("type") == "output_text"
+        for item in body.get("output", [])
+        if isinstance(item, dict) and item.get("type") == "message"
+        for part in item.get("content", [])
+        if isinstance(part, dict) and part.get("type") == "output_text"
     )
 
 
@@ -252,8 +291,14 @@ def _translate(event) -> list[dict]:
         if call_id is None:
             return []
         if item.get("type") == "function_call" and kind.endswith("added"):
-            return [{"type": "tool", "id": call_id, "name": _safe(_TOOL_NAME, item.get("name"), "tool"),
-                     "status": "running"}]
+            return [
+                {
+                    "type": "tool",
+                    "id": call_id,
+                    "name": _safe(_TOOL_NAME, item.get("name"), "tool"),
+                    "status": "running",
+                }
+            ]
         if item.get("type") == "function_call" and kind.endswith("done") and item.get("name") == "call_tool":
             # The toolbox dispatcher hides the real tool in its arguments: relay only that name,
             # once the arguments are complete, so the PWA can label the step. Nothing else leaks.
@@ -289,7 +334,7 @@ def _sources(output) -> list[dict]:
     text = output if isinstance(output, str) else ""
     start, end = text.find("{"), text.rfind("}")
     try:
-        results = json.loads(text[start:end + 1]).get("results") if start != -1 and end > start else None
+        results = json.loads(text[start : end + 1]).get("results") if start != -1 and end > start else None
     except (ValueError, AttributeError):
         return []
     sources, seen = [], set()
@@ -297,8 +342,13 @@ def _sources(output) -> list[dict]:
         if not isinstance(item, dict):
             continue
         document_id, title = item.get("document_id"), item.get("title")
-        if (isinstance(document_id, str) and _DOCUMENT_ID.fullmatch(document_id) and document_id not in seen
-                and isinstance(title, str) and title.strip()):
+        if (
+            isinstance(document_id, str)
+            and _DOCUMENT_ID.fullmatch(document_id)
+            and document_id not in seen
+            and isinstance(title, str)
+            and title.strip()
+        ):
             seen.add(document_id)
             clean = "".join(c for c in title if c.isprintable())[:_SOURCE_TITLE_MAX]
             sources.append({"documentId": document_id, "title": clean})
@@ -332,9 +382,12 @@ async def _relay_events(lines, on_done=None):
             item = event.get("item") if isinstance(event, dict) else None
             if isinstance(item, dict) and item.get("type") == "function_call" and isinstance(item.get("call_id"), str):
                 tool_names[item["call_id"]] = item.get("name")
-            if (isinstance(item, dict) and item.get("type") == "function_call_output"
-                    and tool_names.get(item.get("call_id")) == DOCUMENT_SEARCH_TOOL
-                    and item.get("call_id") not in cited_calls):
+            if (
+                isinstance(item, dict)
+                and item.get("type") == "function_call_output"
+                and tool_names.get(item.get("call_id")) == DOCUMENT_SEARCH_TOOL
+                and item.get("call_id") not in cited_calls
+            ):
                 cited_calls.add(item.get("call_id"))
                 cited = _sources(item.get("output"))
                 call_id = _safe(_SAFE_ID, item.get("call_id"))
@@ -368,14 +421,21 @@ async def _relay_events(lines, on_done=None):
         yield _sse({"type": "error", "kind": "upstream"})
 
 
-def create_api_router(settings: ApiSettings, service: NotionOAuth, credential, http_client=None,
-                      workspace: WorkspaceService | None = None, documents=None) -> APIRouter:
+def create_api_router(
+    settings: ApiSettings,
+    service: NotionOAuth,
+    credential,
+    http_client=None,
+    workspace: WorkspaceService | None = None,
+    documents=None,
+) -> APIRouter:
     require_owner = _owner_check(settings)
     router = APIRouter(dependencies=[Depends(require_owner)])
     if workspace is not None:
         router.include_router(create_workspace_router(workspace, require_owner, documents))
         if documents is not None:
             from savant.bff_documents import create_documents_router
+
             router.include_router(create_documents_router(documents, workspace, require_owner))
 
     async def stored_session(body: ChatRequest) -> dict | None:
@@ -392,11 +452,13 @@ def create_api_router(settings: ApiSettings, service: NotionOAuth, credential, h
 
     async def keep_turn(body: ChatRequest, answer: str, response_id: str | None) -> None:
         if workspace is not None and body.session_id:
-            await workspace.record_turn(body.session_id, body.message, answer,
-                                        voice=body.mode == "voice", response_id=response_id)
+            await workspace.record_turn(
+                body.session_id, body.message, answer, voice=body.mode == "voice", response_id=response_id
+            )
 
     # Both prefixes are served: /api for the PWA proxy, the bare path for direct calls.
     for prefix in ("", "/api"):
+
         @router.get(f"{prefix}/oauth/notion/start")
         async def start():
             try:
@@ -442,21 +504,22 @@ def create_api_router(settings: ApiSettings, service: NotionOAuth, credential, h
             await keep_turn(body, _reply_text(result), conversation_id)
         except Exception as error:
             logger.warning("session_persist_failed", extra={"error_type": type(error).__name__})
-        return JSONResponse({"conversation_id": conversation_id, "reply": _reply_text(result)},
-                            headers={"Cache-Control": "no-store"})
+        return JSONResponse(
+            {"conversation_id": conversation_id, "reply": _reply_text(result)}, headers={"Cache-Control": "no-store"}
+        )
 
     @router.post("/api/chat/stream")
     async def chat_stream(body: ChatRequest):
         """Same relay as /api/chat, but the answer is forwarded while the agent writes it."""
         payload = _agent_payload(body, stream=True, session=await stored_session(body))
         owned = http_client is None
-        client = http_client or httpx.AsyncClient(
-            timeout=httpx.Timeout(10.0, read=AGENT_TIMEOUT_SECONDS))
+        client = http_client or httpx.AsyncClient(timeout=httpx.Timeout(10.0, read=AGENT_TIMEOUT_SECONDS))
         upstream = None
         try:
             token = await credential.get_token(AGENT_TOKEN_SCOPE)
-            request = client.build_request("POST", settings.agent_responses_url, json=payload,
-                                           headers={"Authorization": f"Bearer {token.token}"})
+            request = client.build_request(
+                "POST", settings.agent_responses_url, json=payload, headers={"Authorization": f"Bearer {token.token}"}
+            )
             upstream = await client.send(request, stream=True)
             upstream.raise_for_status()
         except BaseException as error:
@@ -477,6 +540,7 @@ def create_api_router(settings: ApiSettings, service: NotionOAuth, credential, h
 
         async def events():
             try:
+
                 async def finished(answer, response_id):
                     await keep_turn(body, answer, response_id)
 
@@ -488,8 +552,11 @@ def create_api_router(settings: ApiSettings, service: NotionOAuth, credential, h
                     await client.aclose()
 
         # no-transform and X-Accel-Buffering keep proxies from holding the stream back.
-        return StreamingResponse(events(), media_type="text/event-stream",
-                                 headers={"Cache-Control": "no-store, no-transform", "X-Accel-Buffering": "no"})
+        return StreamingResponse(
+            events(),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-store, no-transform", "X-Accel-Buffering": "no"},
+        )
 
     speech_cache: dict = {}
 
@@ -524,11 +591,14 @@ def create_api_router(settings: ApiSettings, service: NotionOAuth, credential, h
             except Exception as error:
                 logger.warning("speech_token_failed", extra={"error_type": type(error).__name__})
                 raise HTTPException(502) from None
-            speech_cache.update(token=token, until=now + SPEECH_TOKEN_REUSE_SECONDS,
-                                expires=now + SPEECH_TOKEN_LIFETIME_SECONDS)
+            speech_cache.update(
+                token=token, until=now + SPEECH_TOKEN_REUSE_SECONDS, expires=now + SPEECH_TOKEN_LIFETIME_SECONDS
+            )
             remaining = SPEECH_TOKEN_LIFETIME_SECONDS
-        return JSONResponse({"token": token, "region": settings.speech_region, "expires_in": remaining},
-                            headers={"Cache-Control": "no-store"})
+        return JSONResponse(
+            {"token": token, "region": settings.speech_region, "expires_in": remaining},
+            headers={"Cache-Control": "no-store"},
+        )
 
     @router.post("/api/warmup")
     async def warmup():
@@ -558,16 +628,28 @@ def create_api_router(settings: ApiSettings, service: NotionOAuth, credential, h
         except Exception as error:
             logger.warning("warmup_failed", extra={"error_type": type(error).__name__})
             raise HTTPException(502) from None
-        return JSONResponse({"ready": ready, **({"conversation_id": warm} if warm else {})},
-                            headers={"Cache-Control": "no-store"})
+        return JSONResponse(
+            {"ready": ready, **({"conversation_id": warm} if warm else {})}, headers={"Cache-Control": "no-store"}
+        )
 
     return router
 
 
-def add_api(app: FastAPI, settings: ApiSettings, service: NotionOAuth, credential, http_client=None,
-            workspace: WorkspaceService | None = None, documents=None) -> None:
+def add_api(
+    app: FastAPI,
+    settings: ApiSettings,
+    service: NotionOAuth,
+    credential,
+    http_client=None,
+    workspace: WorkspaceService | None = None,
+    documents=None,
+) -> None:
     app.include_router(create_api_router(settings, service, credential, http_client, workspace, documents))
     if settings.pwa_origin:
         # Only needed when the PWA runs on another origin (local development).
-        app.add_middleware(CORSMiddleware, allow_origins=[settings.pwa_origin],
-                           allow_methods=["GET", "POST", "PATCH", "DELETE"], allow_headers=["Content-Type"])
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=[settings.pwa_origin],
+            allow_methods=["GET", "POST", "PATCH", "DELETE"],
+            allow_headers=["Content-Type"],
+        )

@@ -4,12 +4,13 @@ Everything belongs to a project; Main always exists and cannot be deleted; proje
 (case-insensitive); a session belongs to one project and can move; deleting a project or a session
 deletes what it holds. Only text is stored: never tool arguments or results.
 """
+
 from __future__ import annotations
 
 import re
 import time
-from typing import Literal
 import uuid
+from typing import Literal
 
 from savant.workspace_store import Store
 
@@ -130,16 +131,23 @@ class WorkspaceService:
             raise WorkspaceError("invalid", f"A session title has 1 to {TITLE_MAX} characters.")
         return title
 
-    async def create_session(self, session_id: str | None, project_id: str, title: str,
-                             *, pinned: bool = False) -> dict:
+    async def create_session(
+        self, session_id: str | None, project_id: str, title: str, *, pinned: bool = False
+    ) -> dict:
         session_id = session_id or uuid.uuid4().hex
         if not _ID.fullmatch(session_id):
             raise WorkspaceError("invalid", "Invalid session id.")
         await self._project(project_id)
         if await self.store.get_session(session_id) is not None:
             raise WorkspaceError("conflict", "This session already exists.")
-        session = {"id": session_id, "projectId": project_id, "title": self._title(title),
-                   "pinned": pinned, "updatedAt": _now(), "messageCount": 0}
+        session = {
+            "id": session_id,
+            "projectId": project_id,
+            "title": self._title(title),
+            "pinned": pinned,
+            "updatedAt": _now(),
+            "messageCount": 0,
+        }
         await self.store.put_session(session)
         return session
 
@@ -168,19 +176,34 @@ class WorkspaceService:
         await self.session(session_id)
         return await self.store.messages(session_id)
 
-    async def record_turn(self, session_id: str, question: str, answer: str, *,
-                          voice: bool, response_id: str | None) -> dict:
+    async def record_turn(
+        self, session_id: str, question: str, answer: str, *, voice: bool, response_id: str | None
+    ) -> dict:
         """Keep one finished turn and remember the agent's answer id, which continues the thread."""
         session = await self.session(session_id)
         at = _now()
         turn = [
-            {"id": uuid.uuid4().hex, "role": "user", "text": question[:TEXT_MAX], "at": at,
-             **({"voice": True} if voice else {})},
-            {"id": uuid.uuid4().hex, "role": "assistant", "text": answer[:TEXT_MAX], "at": at + 1,
-             **({"voice": True} if voice else {})},
+            {
+                "id": uuid.uuid4().hex,
+                "role": "user",
+                "text": question[:TEXT_MAX],
+                "at": at,
+                **({"voice": True} if voice else {}),
+            },
+            {
+                "id": uuid.uuid4().hex,
+                "role": "assistant",
+                "text": answer[:TEXT_MAX],
+                "at": at + 1,
+                **({"voice": True} if voice else {}),
+            },
         ]
         await self.store.put_messages(session_id, turn)
-        session = {**session, "updatedAt": at, "messageCount": session.get("messageCount", 0) + 2,
-                   **({"conversationId": response_id} if response_id else {})}
+        session = {
+            **session,
+            "updatedAt": at,
+            "messageCount": session.get("messageCount", 0) + 2,
+            **({"conversationId": response_id} if response_id else {}),
+        }
         await self.store.put_session(session)
         return session

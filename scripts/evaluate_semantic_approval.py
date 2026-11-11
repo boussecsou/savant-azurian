@@ -5,6 +5,7 @@ A case passes only when every one of its --trials answers is expected (pass^k): 
 says yes four times out of five still loops the owner on the fifth (issue #50). Judge failures
 (rate limit, timeout...) are counted apart, so a 429 is never mistaken for a hesitant judge.
 """
+
 import argparse
 import asyncio
 import json
@@ -68,15 +69,32 @@ async def run_trials(cases, judge_one, trials, concurrency=3):
         logging.getLogger("savant").removeHandler(failures)
     failed = []
     for index, case in enumerate(cases):
-        got = answers[index * trials:(index + 1) * trials]
+        got = answers[index * trials : (index + 1) * trials]
         passed = all(answer in case["expected"] for answer in got)
         if not passed:
             failed.append(case["id"])
-        print(json.dumps({"id": case["id"], "expected": case["expected"], "answers": dict(Counter(got)),
-                          "pass_hat_k": 1.0 if passed else 0.0}, ensure_ascii=False))
-    print(json.dumps({"cases": len(cases), "trials": trials, "failed_cases": failed,
-                      "judge_failures": dict(failures.reasons),
-                      "validation": "live model inference only; no Foundry host, Notion or VM"}))
+        print(
+            json.dumps(
+                {
+                    "id": case["id"],
+                    "expected": case["expected"],
+                    "answers": dict(Counter(got)),
+                    "pass_hat_k": 1.0 if passed else 0.0,
+                },
+                ensure_ascii=False,
+            )
+        )
+    print(
+        json.dumps(
+            {
+                "cases": len(cases),
+                "trials": trials,
+                "failed_cases": failed,
+                "judge_failures": dict(failures.reasons),
+                "validation": "live model inference only; no Foundry host, Notion or VM",
+            }
+        )
+    )
     return 1 if failed else 0
 
 
@@ -96,22 +114,29 @@ def arguments(description):
 def main():
     args = arguments(__doc__)
     cases = load_cases(DATASET_PATH, ("id", "operation", "proposal", "message", "expected"), DECISIONS)
-    cases = cases[:args.limit] if args.limit else cases
+    cases = cases[: args.limit] if args.limit else cases
     if not args.run:
-        print(f"Dataset validated: {len(cases)} cases. No model calls. Use --run only after authorizing inference/authentication.")
+        print(
+            f"Dataset validated: {len(cases)} cases. No model calls. Use --run only after authorizing inference/authentication."
+        )
         return 0
     from savant.agent import build_model
     from savant.config import Settings
     from savant.semantic_approval import SemanticApprovalGuardrail
 
     settings = Settings.from_env()  # Fail before creating any credential/client.
-    guardrail = SemanticApprovalGuardrail(build_model(settings, (), guardrail=True),
-                                         timeout=settings.semantic_approval_timeout)
+    guardrail = SemanticApprovalGuardrail(
+        build_model(settings, (), guardrail=True), timeout=settings.semantic_approval_timeout
+    )
     print(json.dumps({"deployment": settings.semantic_approval_model or settings.model_deployment_name}))
 
     async def judge_one(case):
-        return await guardrail.evaluate(operation=case["operation"], proposal=case["proposal"],
-                                        user_message=case["message"], context=case.get("context"))
+        return await guardrail.evaluate(
+            operation=case["operation"],
+            proposal=case["proposal"],
+            user_message=case["message"],
+            context=case.get("context"),
+        )
 
     return asyncio.run(run_trials(cases, judge_one, args.trials))
 

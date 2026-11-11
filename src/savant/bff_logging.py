@@ -6,7 +6,6 @@ import re
 
 from savant.correlation import is_correlation_id
 
-
 EVENTS = {
     "oauth_callback_completed",
     "oauth_callback_rejected",
@@ -46,7 +45,9 @@ class SafeFormatter(logging.Formatter):
             event = "bff_server_error" if record.levelno >= logging.ERROR else "bff_server_event"
         else:
             event = "bff_dependency_error" if record.levelno >= logging.ERROR else "bff_dependency_warning"
-        level = "ERROR" if record.levelno >= logging.ERROR else "WARNING" if record.levelno >= logging.WARNING else "INFO"
+        level = (
+            "ERROR" if record.levelno >= logging.ERROR else "WARNING" if record.levelno >= logging.WARNING else "INFO"
+        )
         detail = _relay_detail(record) if event in RELAY_EVENTS else ""
         correlation = getattr(record, "correlation", None)
         if event in RELAY_EVENTS | {"chat_relay_completed"} and is_correlation_id(correlation):
@@ -66,7 +67,14 @@ LOGGING_CONFIG = {
     "disable_existing_loggers": True,
     "formatters": {"safe": {"()": "savant.bff_logging.SafeFormatter"}},
     "filters": {"safe": {"()": "savant.bff_logging.SafeEvents"}},
-    "handlers": {"safe": {"class": "logging.StreamHandler", "formatter": "safe", "filters": ["safe"], "stream": "ext://sys.stderr"}},
+    "handlers": {
+        "safe": {
+            "class": "logging.StreamHandler",
+            "formatter": "safe",
+            "filters": ["safe"],
+            "stream": "ext://sys.stderr",
+        }
+    },
     "root": {"level": "WARNING", "handlers": ["safe"]},
     "loggers": {
         name: {"handlers": ["safe"], "level": "INFO", "propagate": False}

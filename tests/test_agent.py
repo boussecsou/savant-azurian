@@ -1,7 +1,8 @@
+from langchain_core.messages import AIMessage
+
 from savant.agent import build_model, build_server
 from savant.config import Settings
 from savant.tools import DEFAULT_TOOLS
-from langchain_core.messages import AIMessage
 
 
 class FakeModel:
@@ -79,9 +80,7 @@ def test_disabled_notion_does_not_discover_tools(monkeypatch):
 
     monkeypatch.setattr("savant.tools.notion.load_notion_tools", unexpected_discovery)
     monkeypatch.setattr("savant.agent.ResponsesHostServer", lambda graph: graph)
-    graph = build_server(
-        Settings("https://model.example/openai/v1/", "model"), FakeModel()
-    )
+    graph = build_server(Settings("https://model.example/openai/v1/", "model"), FakeModel())
     assert graph.checkpointer is None
 
 
@@ -102,10 +101,14 @@ def test_enabled_notion_binds_discovered_tools_and_enables_checkpointing(monkeyp
         return FakeModel()
 
     monkeypatch.setattr("savant.agent.build_model", fake_build_model)
-    graph = build_server(Settings(
-        "https://model.example/openai/v1/", "model",
-        notion_mcp_enabled=True, notion_read_tool_names=("fetch",),
-    ))
+    graph = build_server(
+        Settings(
+            "https://model.example/openai/v1/",
+            "model",
+            notion_mcp_enabled=True,
+            notion_read_tool_names=("fetch",),
+        )
+    )
     assert captured["tools"] == [*DEFAULT_TOOLS, fetch]
     assert graph.checkpointer is not None
 
@@ -114,8 +117,10 @@ def test_model_probe_client_does_not_bind_tools(monkeypatch):
     class Model:
         def __init__(self, **kwargs):
             pass
+
         def bind_tools(self, tools):
             raise AssertionError("The runtime probe must not advertise tools")
+
     monkeypatch.setattr("savant.agent.ChatOpenAI", Model)
     monkeypatch.setattr("savant.agent.DefaultAzureCredential", lambda: object())
     monkeypatch.setattr("savant.agent.get_bearer_token_provider", lambda *args: "test-token")
@@ -123,9 +128,10 @@ def test_model_probe_client_does_not_bind_tools(monkeypatch):
 
 
 def test_chat_oauth_server_does_not_authenticate_or_discover_at_boot(monkeypatch, tmp_path):
-    from cryptography.fernet import Fernet
-    from types import SimpleNamespace
     from contextlib import asynccontextmanager
+    from types import SimpleNamespace
+
+    from cryptography.fernet import Fernet
 
     @asynccontextmanager
     async def lifespan(app):
@@ -138,10 +144,24 @@ def test_chat_oauth_server_does_not_authenticate_or_discover_at_boot(monkeypatch
 
     monkeypatch.setattr("savant.semantic_approval.ConversationalResponsesHostServer", Host)
     monkeypatch.setenv("NOTION_OAUTH_ENCRYPTION_KEY", Fernet.generate_key().decode())
-    monkeypatch.setattr("savant.notion_oauth.NotionOAuth.begin", lambda *args: (_ for _ in ()).throw(AssertionError("No OAuth at boot")))
-    monkeypatch.setattr("savant.notion_oauth.NotionOAuth.get_access_token", lambda *args: (_ for _ in ()).throw(AssertionError("No token lookup at boot")))
-    monkeypatch.setattr("savant.tools.notion_chat.discover_tools", lambda *args: (_ for _ in ()).throw(AssertionError("No discovery at boot")))
-    server = build_server(Settings("https://model/", "model", notion_mcp_enabled=True,
-                                  notion_oauth_callback_url="http://localhost:8090/oauth/notion/callback",
-                                  notion_oauth_store_url="sqlite://" + str(tmp_path / "oauth.db")))
+    monkeypatch.setattr(
+        "savant.notion_oauth.NotionOAuth.begin", lambda *args: (_ for _ in ()).throw(AssertionError("No OAuth at boot"))
+    )
+    monkeypatch.setattr(
+        "savant.notion_oauth.NotionOAuth.get_access_token",
+        lambda *args: (_ for _ in ()).throw(AssertionError("No token lookup at boot")),
+    )
+    monkeypatch.setattr(
+        "savant.tools.notion_chat.discover_tools",
+        lambda *args: (_ for _ in ()).throw(AssertionError("No discovery at boot")),
+    )
+    server = build_server(
+        Settings(
+            "https://model/",
+            "model",
+            notion_mcp_enabled=True,
+            notion_oauth_callback_url="http://localhost:8090/oauth/notion/callback",
+            notion_oauth_store_url="sqlite://" + str(tmp_path / "oauth.db"),
+        )
+    )
     assert server.graph.checkpointer is not None

@@ -4,6 +4,7 @@ Without --run, validate the dataset only; do not create credentials or a client.
 ever reaches a VM: only the judge is called. Run from the repository root:
     python -m scripts.evaluate_ssh_judge [--run --trials 5]
 """
+
 import asyncio
 import json
 from pathlib import Path
@@ -18,9 +19,11 @@ REQUIRED = ("id", "command", "reason", "owner_message", "outside_content", "expe
 def main():
     args = arguments(__doc__)
     cases = load_cases(DATASET_PATH, REQUIRED, VERDICTS)
-    cases = cases[:args.limit] if args.limit else cases
+    cases = cases[: args.limit] if args.limit else cases
     if not args.run:
-        print(f"Dataset validated: {len(cases)} cases. No model calls. Use --run only after authorizing inference/authentication.")
+        print(
+            f"Dataset validated: {len(cases)} cases. No model calls. Use --run only after authorizing inference/authentication."
+        )
         return 0
     from savant.agent import build_model
     from savant.config import Settings
@@ -31,8 +34,12 @@ def main():
     print(json.dumps({"deployment": settings.semantic_approval_model or settings.model_deployment_name}))
 
     async def judge_one(case):
-        return await judge.judge(command=case["command"], reason=case["reason"],
-                                 owner_message=case["owner_message"], outside_content=case["outside_content"])
+        return await judge.judge(
+            command=case["command"],
+            reason=case["reason"],
+            owner_message=case["owner_message"],
+            outside_content=case["outside_content"],
+        )
 
     return asyncio.run(run_trials(cases, judge_one, args.trials))
 

@@ -1,9 +1,10 @@
 """Copy the BFF source closure declared in the shared component registry."""
+
 import argparse
 import ast
 import json
-from pathlib import Path
 import shutil
+from pathlib import Path
 
 
 def package(source_root: Path, manifest: Path, destination: Path):
@@ -19,7 +20,7 @@ def package(source_root: Path, manifest: Path, destination: Path):
             if isinstance(node, ast.Import):
                 imports = [alias.name for alias in node.names]
             elif isinstance(node, ast.ImportFrom):
-                prefix = module[:-node.level] if node.level else []
+                prefix = module[: -node.level] if node.level else []
                 stem = prefix + (node.module.split(".") if node.module else [])
                 imports = [".".join(stem), *[".".join(stem + [alias.name]) for alias in node.names]]
             for imported in imports:

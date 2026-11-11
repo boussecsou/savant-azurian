@@ -1,11 +1,16 @@
 """Offline tests for the tool-call evaluation: no model call, no credential."""
+
 import json
 from types import SimpleNamespace
 
 import pytest
 
 from scripts.evaluate_tool_calls import (
-    DATASET_PATH, judge, load_cases, main, pass_hat_k,
+    DATASET_PATH,
+    judge,
+    load_cases,
+    main,
+    pass_hat_k,
 )
 
 
@@ -52,8 +57,7 @@ def test_judge_wildcard_means_present_and_strings_match_case_insensitively():
     wildcard = case(args_contain={"query": "*"}, args_forbidden=[])
     assert judge(wildcard, [call("notion-fetch", query="")])
     assert not judge(wildcard, [call("notion-fetch")])
-    search = case(expected_tool="notion-search", args_contain={"query": "onboarding"},
-                  args_forbidden=[])
+    search = case(expected_tool="notion-search", args_contain={"query": "onboarding"}, args_forbidden=[])
     assert judge(search, [call("notion-search", query="Search: Onboarding checklist")])
     assert not judge(search, [call("notion-search", query="roadmap")])
 
@@ -85,8 +89,7 @@ def test_real_dataset_validates_and_covers_required_scenarios():
     cases = load_cases(DATASET_PATH)
     assert len(cases) == 12
     assert len({item["id"] for item in cases}) == len(cases)
-    assert all(item["expected_tool"] is None or item["expected_tool"] in item["tools"]
-               for item in cases)
+    assert all(item["expected_tool"] is None or item["expected_tool"] in item["tools"] for item in cases)
     root = next(item for item in cases if item["id"] == "list-root-fr")
     assert root["expected_tool"] == "notion-list-private-pages"
     assert "cursor" in root["args_forbidden"]
@@ -124,21 +127,28 @@ def test_load_cases_rejects_schema_drift(tmp_path):
 
 
 def test_default_run_validates_without_credentials(monkeypatch, capsys):
-    monkeypatch.setattr("scripts.evaluate_tool_calls.Settings.from_env",
-                        lambda: pytest.fail("credentials must not be created without --run"))
+    monkeypatch.setattr(
+        "scripts.evaluate_tool_calls.Settings.from_env",
+        lambda: pytest.fail("credentials must not be created without --run"),
+    )
     assert main([]) == 0
     assert capsys.readouterr().out.strip() == "Dataset validated: 12 cases. No model calls."
 
 
-@pytest.mark.parametrize("argv", [
-    ["--run", "--trials", "0"],
-    ["--run", "--trials", "9"],
-    ["--run", "--limit", "0"],
-    ["--run", "--limit", "13"],
-])
+@pytest.mark.parametrize(
+    "argv",
+    [
+        ["--run", "--trials", "0"],
+        ["--run", "--trials", "9"],
+        ["--run", "--limit", "0"],
+        ["--run", "--limit", "13"],
+    ],
+)
 def test_run_rejects_out_of_bounds_options_before_any_model_call(monkeypatch, argv):
-    monkeypatch.setattr("scripts.evaluate_tool_calls.Settings.from_env",
-                        lambda: pytest.fail("options must be validated before credentials"))
+    monkeypatch.setattr(
+        "scripts.evaluate_tool_calls.Settings.from_env",
+        lambda: pytest.fail("options must be validated before credentials"),
+    )
     with pytest.raises(SystemExit) as error:
         main(argv)
     assert error.value.code == 2

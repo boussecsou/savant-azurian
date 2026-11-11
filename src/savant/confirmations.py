@@ -5,18 +5,22 @@ arguments and, for readability, the title of the page read from Notion. The mode
 what the owner is asked to approve is always what will run. The semantic judge reads this same
 text. The text is plain enough to be read aloud: links carry the title, never a bare URL.
 """
+
 from __future__ import annotations
 
 import json
 import re
 
-NOTION_ID = re.compile(r"(?:[0-9a-f]{32}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\Z", re.IGNORECASE)
+NOTION_ID = re.compile(
+    r"(?:[0-9a-f]{32}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\Z", re.IGNORECASE
+)
 
 MESSAGES = {
-    "cancelled": {"fr": "C'est annulé, je n'ai rien modifié.",
-                  "en": "Cancelled, nothing was changed."},
-    "unclear": {"fr": "Je ne peux pas te présenter cette opération clairement. Demande-moi quelque chose de plus petit.",
-                "en": "I can't present this operation clearly. Narrow it to something smaller."},
+    "cancelled": {"fr": "C'est annulé, je n'ai rien modifié.", "en": "Cancelled, nothing was changed."},
+    "unclear": {
+        "fr": "Je ne peux pas te présenter cette opération clairement. Demande-moi quelque chose de plus petit.",
+        "en": "I can't present this operation clearly. Narrow it to something smaller.",
+    },
 }
 
 
@@ -32,8 +36,11 @@ def result_text(operation: dict, lang: str | None, failed: bool) -> str:
     """
     fr = lang == "fr"
     if failed:
-        return ("Ça n'a pas marché. Vérifie le résultat avant de réessayer." if fr
-                else "That did not work. Check the result before retrying.")
+        return (
+            "Ça n'a pas marché. Vérifie le résultat avant de réessayer."
+            if fr
+            else "That did not work. Check the result before retrying."
+        )
     name, args = operation.get("name", ""), operation.get("args") or {}
     labels = operation.get("labels") if isinstance(operation.get("labels"), dict) else {}
     if name in {"notion-delete-pages", "notion-delete-databases"}:
@@ -120,16 +127,27 @@ def confirmation_text(operation: dict, lang: str | None) -> str | None:
             return f"Do you want me to replace the whole content of {page} with “{args['new_str']}”?"
         updates = args.get("content_updates")
         if command == "update_content" and isinstance(updates, list):
-            pairs = [(u.get("old_str", ""), u.get("new_str", ""), u.get("replace_all_matches") is True)
-                     for u in updates if isinstance(u, dict)]
-            if pairs and all(isinstance(a, str) and isinstance(b, str) for a, b, _ in pairs) and \
-                    sum(len(a) + len(b) for a, b, _ in pairs) <= 300:
+            pairs = [
+                (u.get("old_str", ""), u.get("new_str", ""), u.get("replace_all_matches") is True)
+                for u in updates
+                if isinstance(u, dict)
+            ]
+            if (
+                pairs
+                and all(isinstance(a, str) and isinstance(b, str) for a, b, _ in pairs)
+                and sum(len(a) + len(b) for a, b, _ in pairs) <= 300
+            ):
                 if lang == "fr":
-                    parts = [(f"remplace « {a} » par « {b} »" if b else f"supprime « {a} »")
-                             + (" (partout)" if every else "") for a, b, every in pairs]
+                    parts = [
+                        (f"remplace « {a} » par « {b} »" if b else f"supprime « {a} »")
+                        + (" (partout)" if every else "")
+                        for a, b, every in pairs
+                    ]
                     return f"Dans {page}, tu veux que je " + " puis ".join(parts) + " ?"
-                parts = [(f"replace “{a}” with “{b}”" if b else f"remove “{a}”")
-                         + (" (everywhere)" if every else "") for a, b, every in pairs]
+                parts = [
+                    (f"replace “{a}” with “{b}”" if b else f"remove “{a}”") + (" (everywhere)" if every else "")
+                    for a, b, every in pairs
+                ]
                 return f"In {page}, do you want me to " + ", then ".join(parts) + "?"
     return None
 

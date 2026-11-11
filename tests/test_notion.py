@@ -139,17 +139,28 @@ def test_native_mcp_conversion_preserves_results_and_server_errors(monkeypatch, 
 
     async def invoke():
         client = Client("https://notion.example/mcp")
-        remote_tool = Tool.model_validate({
-            "name": "fetch", "description": "Read a page.",
-            "inputSchema": {"type": "object", "properties": {
-                "page_id": {"type": "string"},
-            }, "required": ["page_id"]},
-        })
+        remote_tool = Tool.model_validate(
+            {
+                "name": "fetch",
+                "description": "Read a page.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "page_id": {"type": "string"},
+                    },
+                    "required": ["page_id"],
+                },
+            }
+        )
         adapted = await as_langchain_tool(remote_tool, client)
-        return await adapted.ainvoke({
-            "type": "tool_call", "name": "fetch", "args": {"page_id": "page"},
-            "id": "mcp_call_1",
-        })
+        return await adapted.ainvoke(
+            {
+                "type": "tool_call",
+                "name": "fetch",
+                "args": {"page_id": "page"},
+                "id": "mcp_call_1",
+            }
+        )
 
     result = asyncio.run(invoke())
     assert calls == [("fetch", {"page_id": "page"}, False)]
@@ -171,13 +182,12 @@ def test_notion_oauth_registration_and_token_requests_use_one_auth_method():
     # The public transport exposes the configured OAuth provider.
     oauth = client.transport.auth
     metadata = oauth.context.client_metadata
-    registration = create_client_registration_request(
-        None, metadata, "https://mcp.notion.com"
-    )
+    registration = create_client_registration_request(None, metadata, "https://mcp.notion.com")
     assert json.loads(registration.content)["token_endpoint_auth_method"] == "none"
 
     oauth.context.client_info = OAuthClientInformationFull(
-        client_id="test-client", token_endpoint_auth_method="none",
+        client_id="test-client",
+        token_endpoint_auth_method="none",
         redirect_uris=metadata.redirect_uris,
     )
 

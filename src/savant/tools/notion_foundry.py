@@ -8,8 +8,8 @@ from langchain_core.messages import AIMessage, SystemMessage
 from langgraph.graph import MessagesState, StateGraph
 from langgraph.prebuilt import ToolNode, tools_condition
 
-from ..identity import BASE_IDENTITY, current_time_context
 from ..health import is_runtime_probe
+from ..identity import BASE_IDENTITY, current_time_context
 from . import DEFAULT_TOOLS
 from .approval import approval_hooks
 
@@ -70,15 +70,19 @@ def toolbox_loader(settings, credential=None):
     and reused, instead of a new DefaultAzureCredential (and token request) on every load.
     """
     shared = {"credential": credential} if credential is not None else {}
-    toolbox = EndpointToolbox(
-        project_endpoint=settings.foundry_project_endpoint,
-        toolbox_name=settings.toolbox_endpoint.split("/toolboxes/")[1].split("/")[0],
-        mcp_endpoint=settings.toolbox_endpoint,
-        **shared,
-    ) if settings.toolbox_endpoint else AzureAIProjectToolbox(
-        project_endpoint=settings.foundry_project_endpoint,
-        toolbox_name=settings.notion_toolbox_name,
-        **shared,
+    toolbox = (
+        EndpointToolbox(
+            project_endpoint=settings.foundry_project_endpoint,
+            toolbox_name=settings.toolbox_endpoint.split("/toolboxes/")[1].split("/")[0],
+            mcp_endpoint=settings.toolbox_endpoint,
+            **shared,
+        )
+        if settings.toolbox_endpoint
+        else AzureAIProjectToolbox(
+            project_endpoint=settings.foundry_project_endpoint,
+            toolbox_name=settings.notion_toolbox_name,
+            **shared,
+        )
     )
     cache = {"until": 0.0, "value": None}
     lock = asyncio.Lock()
@@ -101,8 +105,7 @@ def toolbox_loader(settings, credential=None):
 
         # Both read the same catalog: ask side by side. A consent prompt makes the approval list
         # irrelevant (and possibly failing), so its outcome only matters for a real catalog.
-        discovered, platform_approvals = await asyncio.gather(toolbox.get_tools(), approvals(),
-                                                              return_exceptions=True)
+        discovered, platform_approvals = await asyncio.gather(toolbox.get_tools(), approvals(), return_exceptions=True)
         if isinstance(discovered, BaseException):
             raise discovered
         # The SDK returns a synthetic tool when discovery needs OAuth consent.
@@ -117,7 +120,10 @@ def toolbox_loader(settings, credential=None):
                 "Configure exact Notion toolbox tool names (including server prefixes). "
                 f"Available names: {', '.join(sorted(by_name))}"
             )
-        selected = [*DEFAULT_TOOLS, *(discovered if settings.toolbox_endpoint else [by_name[name] for name in requested])]
+        selected = [
+            *DEFAULT_TOOLS,
+            *(discovered if settings.toolbox_endpoint else [by_name[name] for name in requested]),
+        ]
         if len({tool.name for tool in selected}) != len(selected):
             raise RuntimeError("Tool names must be unique across built-in and toolbox tools.")
         protected = set(settings.notion_write_tool_names) | ({tool.name for tool in selected} & set(platform_approvals))
@@ -134,9 +140,7 @@ def build_foundry_graph(settings, model_factory, checkpointer):
         # A CD identity has no personal OAuth grant. Probe the real model
         # without discovering tools; ordinary requests still require consent.
         if is_runtime_probe(state["messages"]):
-            response = await model_factory(()).ainvoke(
-                [SystemMessage(content=BASE_IDENTITY), *state["messages"]]
-            )
+            response = await model_factory(()).ainvoke([SystemMessage(content=BASE_IDENTITY), *state["messages"]])
             return {"messages": [response]}
         tools, _ = await load_tools()
         if len(tools) == 1 and tools[0].name == "oauth_consent_required":
@@ -145,15 +149,15 @@ def build_foundry_graph(settings, model_factory, checkpointer):
             instructions = instructions.replace("then restart the agent", "then send your request again")
             return {"messages": [AIMessage(content=instructions)]}
         model = model_factory(tools)
-        response = await model.ainvoke([SystemMessage(content=BASE_IDENTITY + current_time_context()), *state["messages"]])
+        response = await model.ainvoke(
+            [SystemMessage(content=BASE_IDENTITY + current_time_context()), *state["messages"]]
+        )
         return {"messages": [response]}
 
     async def call_tools(state, config):
         tools, protected = await load_tools()
         sync_gate, async_gate = approval_hooks(protected)
-        return await ToolNode(
-            tools, wrap_tool_call=sync_gate, awrap_tool_call=async_gate
-        ).ainvoke(state, config)
+        return await ToolNode(tools, wrap_tool_call=sync_gate, awrap_tool_call=async_gate).ainvoke(state, config)
 
     workflow = StateGraph(MessagesState)
     workflow.add_node("model", call_model)

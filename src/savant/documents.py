@@ -6,6 +6,7 @@ project's documents (SDD-005 D6). The query is hybrid (keywords + meaning, the q
 the index's own vectorizer) and re-ranked by the semantic ranker. Results are short passages with their
 document's name: outside data, wrapped as untrusted by the caller like web and Notion results.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -71,9 +72,13 @@ class AzureDocumentSearch:
 
     async def search(self, query: str, *, project_id: str, top: int = MAX_RESULTS) -> list[dict]:
         body = {
-            "search": query, "filter": project_filter(project_id), "top": top,
+            "search": query,
+            "filter": project_filter(project_id),
+            "top": top,
             "select": "document_id,title,chunk",
-            "queryType": "semantic", "semanticConfiguration": "sa2-semantic", "captions": "extractive",
+            "queryType": "semantic",
+            "semanticConfiguration": "sa2-semantic",
+            "captions": "extractive",
             "vectorQueries": [{"kind": "text", "text": query, "fields": "chunk_vector", "k": 20}],
         }
         # The token provider is synchronous (azure-identity caches the token): keep it off the event loop.
@@ -93,16 +98,22 @@ def _passage(item: dict) -> dict:
     captions = item.get("@search.captions") or []
     caption = captions[0].get("text") if captions and isinstance(captions[0], dict) else None
     text = caption or item.get("chunk") or ""
-    return {"document_id": str(item.get("document_id") or ""), "title": str(item.get("title") or ""),
-            "passage": text[:MAX_PASSAGE_CHARS]}
+    return {
+        "document_id": str(item.get("document_id") or ""),
+        "title": str(item.get("title") or ""),
+        "passage": text[:MAX_PASSAGE_CHARS],
+    }
 
 
 class SearchArgs(BaseModel):
-    query: str = Field(min_length=1, max_length=300,
-                       description="What to look for in the project's documents, in a few words.")
+    query: str = Field(
+        min_length=1, max_length=300, description="What to look for in the project's documents, in a few words."
+    )
     more_queries: list[Annotated[str, Field(max_length=300)]] = Field(
-        default_factory=list, max_length=MAX_ANGLES - 1,
-        description="Other angles of the same question, searched together with `query` in this one call.")
+        default_factory=list,
+        max_length=MAX_ANGLES - 1,
+        description="Other angles of the same question, searched together with `query` in this one call.",
+    )
 
 
 def angles(query: str, more: list[str]) -> list[str]:
@@ -141,13 +152,20 @@ def build_search_tool(search: DocumentSearch, project_id: str) -> StructuredTool
         found = await asyncio.gather(*(search.search(text, project_id=project_id) for text in asked))
         results = merge([[r for r in results if VISIBLE_DOCUMENT.fullmatch(r["document_id"])] for results in found])
         # Counts and timing only: never a query, a title or a passage.
-        logger.info("documents_search angles=%d results=%d ms=%d", len(asked), len(results),
-                    round((time.perf_counter() - started) * 1000))
+        logger.info(
+            "documents_search angles=%d results=%d ms=%d",
+            len(asked),
+            len(results),
+            round((time.perf_counter() - started) * 1000),
+        )
         if not results:
             return json.dumps({"results": [], "message": "No passage of this project's documents matches."})
         return json.dumps({"results": results}, ensure_ascii=False)
 
     return StructuredTool.from_function(
-        coroutine=search_documents, name=TOOL_NAME, args_schema=SearchArgs,
+        coroutine=search_documents,
+        name=TOOL_NAME,
+        args_schema=SearchArgs,
         description="Search the documents of the current project (PDF, Word, slides, text) and return the "
-                    "most relevant passages with their document name. Read-only.")
+        "most relevant passages with their document name. Read-only.",
+    )

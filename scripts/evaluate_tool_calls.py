@@ -3,6 +3,7 @@
 Without --run, validate the dataset only; do not create credentials or a client.
 Schemas are minimal and fictitious: they are never executed, only shown to the model.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -17,7 +18,6 @@ from langchain_core.tools import StructuredTool
 
 from savant.agent import MODEL_TOKEN_SCOPE, build_model
 from savant.config import Settings
-
 
 DATASET_PATH = Path(__file__).resolve().parents[1] / "evals" / "tool_calls.jsonl"
 
@@ -41,8 +41,7 @@ def _tool(name: str, description: str, properties: dict, required: list[str]) ->
         coroutine=_never_executed,
         name=name,
         description=description,
-        args_schema={"type": "object", "properties": properties,
-                     "required": required, "additionalProperties": False},
+        args_schema={"type": "object", "properties": properties, "required": required, "additionalProperties": False},
     )
 
 
@@ -51,15 +50,16 @@ TOOLS = {
         "notion-list-private-pages",
         "List the pages and databases at the root of the Notion workspace. "
         "cursor is only for pagination and must come from a previous response.",
-        {"cursor": {"type": "string", "description": "Opaque pagination cursor from a previous call."},
-         "limit": {"type": "integer", "description": "Maximum number of results."}},
+        {
+            "cursor": {"type": "string", "description": "Opaque pagination cursor from a previous call."},
+            "limit": {"type": "integer", "description": "Maximum number of results."},
+        },
         [],
     ),
     "notion-search": _tool(
         "notion-search",
         "Search Notion workspace content (pages and databases) by query.",
-        {"query": {"type": "string", "description": "Text to search for in Notion."},
-         "page_size": {"type": "integer"}},
+        {"query": {"type": "string", "description": "Text to search for in Notion."}, "page_size": {"type": "integer"}},
         ["query"],
     ),
     "notion-fetch": _tool(
@@ -71,18 +71,26 @@ TOOLS = {
     "notion-create-pages": _tool(
         "notion-create-pages",
         "Create one or more Notion pages. pages is an array of page objects.",
-        {"pages": {"type": "array", "description": "Pages to create.",
-                   "items": {"type": "object",
-                             "properties": {"title": {"type": "string"},
-                                            "content": {"type": "string"},
-                                            "parent": {"type": "object"}}}}},
+        {
+            "pages": {
+                "type": "array",
+                "description": "Pages to create.",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "title": {"type": "string"},
+                        "content": {"type": "string"},
+                        "parent": {"type": "object"},
+                    },
+                },
+            }
+        },
         ["pages"],
     ),
     "notion-delete-pages": _tool(
         "notion-delete-pages",
         "Permanently delete Notion pages. page_ids is an array of page ids.",
-        {"page_ids": {"type": "array", "items": {"type": "string"},
-                      "description": "Ids of the pages to delete."}},
+        {"page_ids": {"type": "array", "items": {"type": "string"}, "description": "Ids of the pages to delete."}},
         ["page_ids"],
     ),
     "web_search": _tool(
@@ -128,8 +136,7 @@ def judge(case: Mapping, tool_calls) -> bool:
     # One-shot selection: a chained call to another tool is not the expected behaviour.
     if not calls or any(name != case["expected_tool"] for name, _ in calls):
         return False
-    return all(_args_match(args, case["args_contain"], case["args_forbidden"])
-               for _, args in calls)
+    return all(_args_match(args, case["args_contain"], case["args_forbidden"]) for _, args in calls)
 
 
 def pass_hat_k(passes, trials: int) -> float:
@@ -194,38 +201,49 @@ async def evaluate(cases, settings, trials: int) -> int:
     token_provider = get_bearer_token_provider(DefaultAzureCredential(), MODEL_TOKEN_SCOPE)
     results = []
     for case in cases:
-        model = build_model(settings, [TOOLS[name] for name in case["tools"]],
-                            token_provider=token_provider)
+        model = build_model(settings, [TOOLS[name] for name in case["tools"]], token_provider=token_provider)
         passes = 0
         for _ in range(trials):
-            response = await model.ainvoke([
-                SystemMessage(content=SYSTEM_PROMPT),
-                HumanMessage(content=case["message"]),
-            ])
+            response = await model.ainvoke(
+                [
+                    SystemMessage(content=SYSTEM_PROMPT),
+                    HumanMessage(content=case["message"]),
+                ]
+            )
             passes += judge(case, getattr(response, "tool_calls", None))
-        results.append({"id": case["id"], "trials": trials, "passes": passes,
-                        "pass_at_1": round(passes / trials, 3),
-                        "pass_hat_k": pass_hat_k(passes, trials)})
+        results.append(
+            {
+                "id": case["id"],
+                "trials": trials,
+                "passes": passes,
+                "pass_at_1": round(passes / trials, 3),
+                "pass_hat_k": pass_hat_k(passes, trials),
+            }
+        )
         print(json.dumps(results[-1]))
     mean_at_1 = sum(result["pass_at_1"] for result in results) / len(results)
     mean_hat_k = sum(result["pass_hat_k"] for result in results) / len(results)
     failed = [result["id"] for result in results if result["pass_hat_k"] < 1.0]
-    print(json.dumps({"cases": len(results), "trials": trials,
-                      "mean_pass_at_1": round(mean_at_1, 3),
-                      "mean_pass_hat_k": round(mean_hat_k, 3),
-                      "failed_cases": failed,
-                      "validation": "live model inference only; schemas are fictitious and never executed"}))
+    print(
+        json.dumps(
+            {
+                "cases": len(results),
+                "trials": trials,
+                "mean_pass_at_1": round(mean_at_1, 3),
+                "mean_pass_hat_k": round(mean_hat_k, 3),
+                "failed_cases": failed,
+                "validation": "live model inference only; schemas are fictitious and never executed",
+            }
+        )
+    )
     return 1 if failed else 0
 
 
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--run", action="store_true",
-                        help="Make paid inference calls using existing Entra credentials")
-    parser.add_argument("--trials", type=int, default=3,
-                        help="Independent attempts per case (1-8, default 3)")
-    parser.add_argument("--limit", type=int,
-                        help="Evaluate only the first N cases")
+    parser.add_argument("--run", action="store_true", help="Make paid inference calls using existing Entra credentials")
+    parser.add_argument("--trials", type=int, default=3, help="Independent attempts per case (1-8, default 3)")
+    parser.add_argument("--limit", type=int, help="Evaluate only the first N cases")
     args = parser.parse_args(argv)
     if not 1 <= args.trials <= 8:
         parser.error("--trials must be between 1 and 8")
@@ -236,7 +254,7 @@ def main(argv=None) -> int:
         print(f"Dataset validated: {len(cases)} cases. No model calls.")
         return 0
     settings = Settings.from_env()  # Fail before creating any credential/client.
-    return asyncio.run(evaluate(cases[:args.limit], settings, args.trials))
+    return asyncio.run(evaluate(cases[: args.limit], settings, args.trials))
 
 
 if __name__ == "__main__":

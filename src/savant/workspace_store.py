@@ -8,6 +8,7 @@ fields; they never leave this module.
 Partition keys, fixed when the containers were created: projects `/id`, sessions `/id`,
 messages `/sessionId`. One owner only: nothing here tells owners apart.
 """
+
 from __future__ import annotations
 
 from typing import Any, Protocol
@@ -38,6 +39,7 @@ class CosmosStore:
 
     def __init__(self, endpoint: str, credential: Any, database: str = DEFAULT_DATABASE):
         from azure.cosmos.aio import CosmosClient
+
         self._client = CosmosClient(endpoint, credential=credential)
         db = self._client.get_database_client(database)
         self._projects = db.get_container_client("projects")
@@ -61,8 +63,12 @@ class CosmosStore:
         return await self._all(self._sessions, "SELECT * FROM c")
 
     async def get_session(self, session_id: str) -> dict | None:
-        found = await self._all(self._sessions, "SELECT * FROM c WHERE c.id = @id",
-                                parameters=[{"name": "@id", "value": session_id}], partition_key=session_id)
+        found = await self._all(
+            self._sessions,
+            "SELECT * FROM c WHERE c.id = @id",
+            parameters=[{"name": "@id", "value": session_id}],
+            partition_key=session_id,
+        )
         return found[0] if found else None
 
     async def put_session(self, session: dict) -> None:
@@ -75,8 +81,12 @@ class CosmosStore:
         await self._delete(self._sessions, session_id, session_id)
 
     async def messages(self, session_id: str) -> list[dict]:
-        return await self._all(self._messages, "SELECT * FROM c WHERE c.sessionId = @id ORDER BY c.at",
-                               parameters=[{"name": "@id", "value": session_id}], partition_key=session_id)
+        return await self._all(
+            self._messages,
+            "SELECT * FROM c WHERE c.sessionId = @id ORDER BY c.at",
+            parameters=[{"name": "@id", "value": session_id}],
+            partition_key=session_id,
+        )
 
     async def put_messages(self, session_id: str, messages: list[dict]) -> None:
         for message in messages:
@@ -85,6 +95,7 @@ class CosmosStore:
     @staticmethod
     async def _delete(container, item_id: str, partition_key: str) -> None:
         from azure.cosmos.exceptions import CosmosResourceNotFoundError
+
         try:
             await container.delete_item(item_id, partition_key=partition_key)
         except CosmosResourceNotFoundError:

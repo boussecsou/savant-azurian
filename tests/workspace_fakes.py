@@ -1,4 +1,5 @@
 """An in-memory `Store`: same contract as the Cosmos DB one, no Azure."""
+
 import copy
 
 

@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
-from typing import Any, Protocol, Sequence
+from collections.abc import Sequence
+from typing import Any, Protocol
 
 from langchain_core.messages import SystemMessage
 from langchain_core.tools import BaseTool
-from langgraph.graph import MessagesState, StateGraph
 from langgraph.checkpoint.base import BaseCheckpointSaver
+from langgraph.graph import MessagesState, StateGraph
 from langgraph.prebuilt import ToolNode, tools_condition
 
 from .identity import BASE_IDENTITY, current_time_context

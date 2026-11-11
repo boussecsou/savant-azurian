@@ -3,10 +3,10 @@ import json
 from types import SimpleNamespace
 from urllib.parse import parse_qs, urlsplit
 
-from cryptography.fernet import Fernet
-from fastapi.testclient import TestClient
 import httpx
 import pytest
+from cryptography.fernet import Fernet
+from fastapi.testclient import TestClient
 
 from savant.bff_api import AGENT_TIMEOUT_SECONDS, WARMUP_EXPECTED, WARMUP_PROMPT, ApiSettings, add_api
 from savant.health import RUNTIME_SMOKE_EXPECTED, RUNTIME_SMOKE_PROMPT
@@ -47,9 +47,13 @@ def service(tmp_path):
 
     async def seed():
         async with store.transaction() as data:
-            data["client"] = {"callback_url": CALLBACK, "client_id": "id",
-                              "authorization_endpoint": "https://mcp.notion.com/authorize",
-                              "token_endpoint": "https://mcp.notion.com/token"}
+            data["client"] = {
+                "callback_url": CALLBACK,
+                "client_id": "id",
+                "authorization_endpoint": "https://mcp.notion.com/authorize",
+                "token_endpoint": "https://mcp.notion.com/token",
+            }
+
     asyncio.run(seed())
     return NotionOAuth(CALLBACK, store)
 
@@ -59,10 +63,22 @@ def make_client(service, handler=None, origin="", credential=None):
 
     def default(request):
         sent.append(request)
-        return httpx.Response(200, json={"id": "resp_2", "output": [
-            {"type": "reasoning", "content": [{"type": "output_text", "text": "hidden"}]},
-            {"type": "message", "content": [{"type": "output_text", "text": "Bonjour "},
-                                            {"type": "output_text", "text": "Ali"}]}]})
+        return httpx.Response(
+            200,
+            json={
+                "id": "resp_2",
+                "output": [
+                    {"type": "reasoning", "content": [{"type": "output_text", "text": "hidden"}]},
+                    {
+                        "type": "message",
+                        "content": [
+                            {"type": "output_text", "text": "Bonjour "},
+                            {"type": "output_text", "text": "Ali"},
+                        ],
+                    },
+                ],
+            },
+        )
 
     def recording(request):
         sent.append(request)
@@ -75,11 +91,18 @@ def make_client(service, handler=None, origin="", credential=None):
     return TestClient(app), sent
 
 
-@pytest.mark.parametrize("method,path", [
-    ("get", "/oauth/notion/start"), ("get", "/api/oauth/notion/start"),
-    ("get", "/oauth/notion/status"), ("get", "/api/oauth/notion/status"),
-    ("post", "/api/chat"), ("post", "/api/chat/stream"), ("post", "/api/warmup"),
-])
+@pytest.mark.parametrize(
+    "method,path",
+    [
+        ("get", "/oauth/notion/start"),
+        ("get", "/api/oauth/notion/start"),
+        ("get", "/oauth/notion/status"),
+        ("get", "/api/oauth/notion/status"),
+        ("post", "/api/chat"),
+        ("post", "/api/chat/stream"),
+        ("post", "/api/warmup"),
+    ],
+)
 def test_every_owner_route_fails_closed(service, method, path):
     client, sent = make_client(service)
     kwargs = {"json": {"message": "salut"}} if method == "post" else {}
@@ -87,9 +110,13 @@ def test_every_owner_route_fails_closed(service, method, path):
     # Header present but empty, or the old Static Web Apps principal alone: still no identity.
     for headers in ({"x-ms-client-principal-id": " "}, {"x-ms-client-principal": "eyJ1c2VyUm9sZXMiOlsib3duZXIiXX0="}):
         assert getattr(client, method)(path, headers=headers, follow_redirects=False, **kwargs).status_code == 401
-    for headers in (easy_auth("11111111-2222-4333-8444-555555555555"), easy_auth(idp="google"),
-                    easy_auth(idp=None), easy_auth(OBJECT_ID[:-1]),
-                    {"x-ms-client-principal-id": ("é" + OBJECT_ID).encode("latin-1"), "x-ms-client-principal-idp": "aad"}):
+    for headers in (
+        easy_auth("11111111-2222-4333-8444-555555555555"),
+        easy_auth(idp="google"),
+        easy_auth(idp=None),
+        easy_auth(OBJECT_ID[:-1]),
+        {"x-ms-client-principal-id": ("é" + OBJECT_ID).encode("latin-1"), "x-ms-client-principal-idp": "aad"},
+    ):
         assert getattr(client, method)(path, headers=headers, follow_redirects=False, **kwargs).status_code == 403
     assert sent == []
 
@@ -114,8 +141,9 @@ def test_api_is_absent_when_not_configured(service):
 @pytest.mark.parametrize("path", ["/oauth/notion/start", "/api/oauth/notion/start"])
 def test_start_redirects_to_notion_for_the_fixed_owner_only(service, path):
     client, _ = make_client(service)
-    response = client.get(path, params={"user_id": "mallory", "user": "mallory"},
-                          headers=OWNER_HEADERS, follow_redirects=False)
+    response = client.get(
+        path, params={"user_id": "mallory", "user": "mallory"}, headers=OWNER_HEADERS, follow_redirects=False
+    )
     assert response.status_code == 302
     assert response.headers["cache-control"] == "no-store"
     location = urlsplit(response.headers["location"])
@@ -125,6 +153,7 @@ def test_start_redirects_to_notion_for_the_fixed_owner_only(service, path):
     async def pending_users():
         async with service.store.transaction() as data:
             return {flow["user"] for flow in data["pending"].values()}
+
     assert asyncio.run(pending_users()) == {service._user(OWNER)}
     # A second click reuses the pending consent instead of piling up flows.
     again = client.get(path, headers=OWNER_HEADERS, follow_redirects=False)
@@ -138,7 +167,11 @@ def test_status_follows_the_grant_stored_for_the_fixed_owner(service):
     async def grant(user):
         async with service.store.transaction() as data:
             data.setdefault("tokens", {})[service._user(user)] = {
-                "access_token": "secret", "refresh_token": None, "expires_at": service.clock() + 3600}
+                "access_token": "secret",
+                "refresh_token": None,
+                "expires_at": service.clock() + 3600,
+            }
+
     asyncio.run(grant("someone-else"))
     assert client.get("/api/oauth/notion/status", headers=OWNER_HEADERS).json() == {"connected": False}
     asyncio.run(grant(OWNER))
@@ -151,9 +184,11 @@ def test_status_follows_the_grant_stored_for_the_fixed_owner(service):
 def test_chat_relays_to_the_agent_and_returns_the_next_conversation_id(service):
     credential = Credential()
     client, sent = make_client(service, credential=credential)
-    response = client.post("/api/chat", headers=OWNER_HEADERS,
-                           json={"message": "Salut", "conversation_id": "resp_1",
-                                 "user_id": "mallory", "stream": True, "model": "other"})
+    response = client.post(
+        "/api/chat",
+        headers=OWNER_HEADERS,
+        json={"message": "Salut", "conversation_id": "resp_1", "user_id": "mallory", "stream": True, "model": "other"},
+    )
     assert response.status_code == 200
     assert response.json() == {"conversation_id": "resp_2", "reply": "Bonjour Ali"}
     assert response.headers["cache-control"] == "no-store"
@@ -166,20 +201,25 @@ def test_chat_relays_to_the_agent_and_returns_the_next_conversation_id(service):
     assert json.loads(sent[1].content) == {"input": "Premier message", "stream": False}
 
 
-@pytest.mark.parametrize("body", [{}, {"message": ""}, {"message": "x" * 8001},
-                                  {"message": "x", "conversation_id": "bad id/../"}, {"message": 3}])
+@pytest.mark.parametrize(
+    "body",
+    [{}, {"message": ""}, {"message": "x" * 8001}, {"message": "x", "conversation_id": "bad id/../"}, {"message": 3}],
+)
 def test_chat_rejects_invalid_input_before_calling_the_agent(service, body):
     client, sent = make_client(service)
     assert client.post("/api/chat", headers=OWNER_HEADERS, json=body).status_code == 422
     assert sent == []
 
 
-@pytest.mark.parametrize("handler,status", [
-    (lambda request: httpx.Response(500, text="secret upstream detail"), 502),
-    (lambda request: httpx.Response(200, json={"output": []}), 502),
-    (lambda request: httpx.Response(200, text="not json"), 502),
-    (lambda request: (_ for _ in ()).throw(httpx.ReadTimeout("slow")), 504),
-])
+@pytest.mark.parametrize(
+    "handler,status",
+    [
+        (lambda request: httpx.Response(500, text="secret upstream detail"), 502),
+        (lambda request: httpx.Response(200, json={"output": []}), 502),
+        (lambda request: httpx.Response(200, text="not json"), 502),
+        (lambda request: (_ for _ in ()).throw(httpx.ReadTimeout("slow")), 504),
+    ],
+)
 def test_chat_maps_agent_failures_without_leaking_details(service, handler, status):
     client, _ = make_client(service, handler)
     response = client.post("/api/chat", headers=OWNER_HEADERS, json={"message": "Salut"})
@@ -196,8 +236,10 @@ def test_cors_only_allows_the_configured_pwa_origin(service):
     denied = client.options("/api/chat", headers={"Origin": "https://evil.example", **preflight})
     assert "access-control-allow-origin" not in denied.headers
     plain, _ = make_client(service)
-    assert "access-control-allow-origin" not in plain.options(
-        "/api/chat", headers={"Origin": "http://localhost:5173", **preflight}).headers
+    assert (
+        "access-control-allow-origin"
+        not in plain.options("/api/chat", headers={"Origin": "http://localhost:5173", **preflight}).headers
+    )
 
 
 def test_credential_is_closed_with_the_app(service):
@@ -227,7 +269,9 @@ def test_settings_enable_the_api_only_with_an_agent_url(monkeypatch):
         ApiSettings.from_env()
 
 
-@pytest.mark.parametrize("value", ["", "not-a-guid", OBJECT_ID.replace("-", ""), "{" + OBJECT_ID + "}", OBJECT_ID + "0"])
+@pytest.mark.parametrize(
+    "value", ["", "not-a-guid", OBJECT_ID.replace("-", ""), "{" + OBJECT_ID + "}", OBJECT_ID + "0"]
+)
 def test_settings_require_a_well_formed_entra_object_id(monkeypatch, value):
     monkeypatch.setenv("NOTION_OWNER_ID", OWNER)
     monkeypatch.setenv("AGENT_RESPONSES_URL", AGENT_URL)
@@ -236,13 +280,16 @@ def test_settings_require_a_well_formed_entra_object_id(monkeypatch, value):
         ApiSettings.from_env()
 
 
-@pytest.mark.parametrize("name,value", [
-    ("AGENT_RESPONSES_URL", "http://acct.services.ai.azure.com/responses"),
-    ("AGENT_RESPONSES_URL", "https://evil.example/responses"),
-    ("AGENT_RESPONSES_URL", "https://user:pw@acct.services.ai.azure.com/responses"),
-    ("PWA_ORIGIN", "http://pwa.example"),
-    ("PWA_ORIGIN", "https://pwa.example/path"),
-])
+@pytest.mark.parametrize(
+    "name,value",
+    [
+        ("AGENT_RESPONSES_URL", "http://acct.services.ai.azure.com/responses"),
+        ("AGENT_RESPONSES_URL", "https://evil.example/responses"),
+        ("AGENT_RESPONSES_URL", "https://user:pw@acct.services.ai.azure.com/responses"),
+        ("PWA_ORIGIN", "http://pwa.example"),
+        ("PWA_ORIGIN", "https://pwa.example/path"),
+    ],
+)
 def test_settings_reject_unsafe_urls(monkeypatch, name, value):
     monkeypatch.setenv("NOTION_OWNER_ID", OWNER)
     monkeypatch.setenv("AGENT_RESPONSES_URL", AGENT_URL)
@@ -252,12 +299,15 @@ def test_settings_reject_unsafe_urls(monkeypatch, name, value):
         ApiSettings.from_env()
 
 
-@pytest.mark.parametrize("configured,expected", [
-    (AGENT_URL, AGENT_URL + "?api-version=v1"),
-    (AGENT_URL + "?api-version=2025-01-01", AGENT_URL + "?api-version=2025-01-01"),
-    (AGENT_URL + "?foo=1", AGENT_URL + "?foo=1&api-version=v1"),
-    (AGENT_URL + "?API-Version=2025-01-01&foo=1", AGENT_URL + "?API-Version=2025-01-01&foo=1"),
-])
+@pytest.mark.parametrize(
+    "configured,expected",
+    [
+        (AGENT_URL, AGENT_URL + "?api-version=v1"),
+        (AGENT_URL + "?api-version=2025-01-01", AGENT_URL + "?api-version=2025-01-01"),
+        (AGENT_URL + "?foo=1", AGENT_URL + "?foo=1&api-version=v1"),
+        (AGENT_URL + "?API-Version=2025-01-01&foo=1", AGENT_URL + "?API-Version=2025-01-01&foo=1"),
+    ],
+)
 def test_settings_add_the_agent_api_version_only_when_missing(monkeypatch, configured, expected):
     monkeypatch.setenv("NOTION_OWNER_ID", OWNER)
     monkeypatch.setenv("BFF_OWNER_OBJECT_ID", OBJECT_ID)
@@ -287,7 +337,9 @@ def test_relay_timeout_covers_a_slow_notion_read_but_stays_under_the_ingress_def
 
 
 def test_chat_posts_to_the_agent_with_the_api_version(service, monkeypatch):
-    client, sent = _app_from_env(service, monkeypatch, lambda request: httpx.Response(200, json={"id": "resp_9", "output": []}))
+    client, sent = _app_from_env(
+        service, monkeypatch, lambda request: httpx.Response(200, json={"id": "resp_9", "output": []})
+    )
     assert client.post("/api/chat", headers=OWNER_HEADERS, json={"message": "Salut"}).status_code == 200
     assert sent[0].url.params["api-version"] == "v1"
     assert sent[0].url.path.endswith("/openai/responses")
@@ -325,23 +377,43 @@ def agent_stream(*events):
 
 
 def read_events(response):
-    return [json.loads(chunk[len("data: "):]) for chunk in response.text.split("\n\n") if chunk]
+    return [json.loads(chunk[len("data: ") :]) for chunk in response.text.split("\n\n") if chunk]
 
 
 def test_stream_forwards_text_tool_names_and_the_next_conversation_id(service):
-    client, sent = make_client(service, lambda request: agent_stream(
-        {"type": "response.created", "response": {"id": "resp_9"}},
-        {"type": "response.output_item.added", "item": {"type": "reasoning", "summary": [{"text": "private thoughts"}]}},
-        {"type": "response.output_item.added", "item": {"type": "function_call", "id": "fc_1", "call_id": "call_1",
-                                                         "name": "notion-search", "arguments": "{\"query\": \"secret\"}"}},
-        {"type": "response.function_call_arguments.delta", "delta": "{\"query\": \"secret\"}"},
-        {"type": "response.output_item.done", "item": {"type": "function_call_output", "call_id": "call_1",
-                                                        "output": "private notion page"}},
-        {"type": "response.output_text.delta", "delta": "Bonjour "},
-        {"type": "response.output_text.delta", "delta": "Ali"},
-        {"type": "response.completed", "response": {"id": "resp_9", "output": []}}))
-    response = client.post("/api/chat/stream", headers=OWNER_HEADERS,
-                           json={"message": "Salut", "conversation_id": "resp_1", "model": "other"})
+    client, sent = make_client(
+        service,
+        lambda request: agent_stream(
+            {"type": "response.created", "response": {"id": "resp_9"}},
+            {
+                "type": "response.output_item.added",
+                "item": {"type": "reasoning", "summary": [{"text": "private thoughts"}]},
+            },
+            {
+                "type": "response.output_item.added",
+                "item": {
+                    "type": "function_call",
+                    "id": "fc_1",
+                    "call_id": "call_1",
+                    "name": "notion-search",
+                    "arguments": '{"query": "secret"}',
+                },
+            },
+            {"type": "response.function_call_arguments.delta", "delta": '{"query": "secret"}'},
+            {
+                "type": "response.output_item.done",
+                "item": {"type": "function_call_output", "call_id": "call_1", "output": "private notion page"},
+            },
+            {"type": "response.output_text.delta", "delta": "Bonjour "},
+            {"type": "response.output_text.delta", "delta": "Ali"},
+            {"type": "response.completed", "response": {"id": "resp_9", "output": []}},
+        ),
+    )
+    response = client.post(
+        "/api/chat/stream",
+        headers=OWNER_HEADERS,
+        json={"message": "Salut", "conversation_id": "resp_1", "model": "other"},
+    )
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("text/event-stream")
     assert "no-store" in response.headers["cache-control"]
@@ -360,10 +432,17 @@ def test_stream_forwards_text_tool_names_and_the_next_conversation_id(service):
 
 
 def test_stream_sanitizes_names_and_ids_it_relays(service):
-    client, _ = make_client(service, lambda request: agent_stream(
-        {"type": "response.output_item.added", "item": {"type": "function_call", "call_id": "call_2", "name": "bad name\n!"}},
-        {"type": "response.output_item.added", "item": {"type": "function_call", "call_id": "x y", "name": "ok"}},
-        {"type": "response.completed", "response": {"id": "resp 9"}}))
+    client, _ = make_client(
+        service,
+        lambda request: agent_stream(
+            {
+                "type": "response.output_item.added",
+                "item": {"type": "function_call", "call_id": "call_2", "name": "bad name\n!"},
+            },
+            {"type": "response.output_item.added", "item": {"type": "function_call", "call_id": "x y", "name": "ok"}},
+            {"type": "response.completed", "response": {"id": "resp 9"}},
+        ),
+    )
     events = read_events(client.post("/api/chat/stream", headers=OWNER_HEADERS, json={"message": "Salut"}))
     assert events[0] == {"type": "tool", "id": "call_2", "name": "tool", "status": "running"}
     # An unusable id never reaches the PWA, and a stream with no valid end is reported as a failure.
@@ -372,23 +451,30 @@ def test_stream_sanitizes_names_and_ids_it_relays(service):
 
 
 def test_stream_reports_an_agent_that_stops_without_finishing(service):
-    client, _ = make_client(service, lambda request: agent_stream(
-        {"type": "response.output_text.delta", "delta": "Bon"}))
+    client, _ = make_client(
+        service, lambda request: agent_stream({"type": "response.output_text.delta", "delta": "Bon"})
+    )
     assert read_events(client.post("/api/chat/stream", headers=OWNER_HEADERS, json={"message": "Salut"})) == [
-        {"type": "delta", "text": "Bon"}, {"type": "error", "kind": "upstream"}]
+        {"type": "delta", "text": "Bon"},
+        {"type": "error", "kind": "upstream"},
+    ]
 
 
 def test_stream_forwards_an_agent_failure_event(service):
     client, _ = make_client(service, lambda request: agent_stream({"type": "response.failed", "response": {}}))
     assert read_events(client.post("/api/chat/stream", headers=OWNER_HEADERS, json={"message": "Salut"})) == [
-        {"type": "error", "kind": "upstream"}]
+        {"type": "error", "kind": "upstream"}
+    ]
 
 
-@pytest.mark.parametrize("handler,status", [
-    (lambda request: httpx.Response(500, text="secret upstream detail"), 502),
-    (lambda request: (_ for _ in ()).throw(httpx.ReadTimeout("slow")), 504),
-    (lambda request: (_ for _ in ()).throw(httpx.ConnectError("secret connect detail")), 502),
-])
+@pytest.mark.parametrize(
+    "handler,status",
+    [
+        (lambda request: httpx.Response(500, text="secret upstream detail"), 502),
+        (lambda request: (_ for _ in ()).throw(httpx.ReadTimeout("slow")), 504),
+        (lambda request: (_ for _ in ()).throw(httpx.ConnectError("secret connect detail")), 502),
+    ],
+)
 def test_stream_maps_agent_failures_before_streaming_without_leaking_details(service, handler, status):
     client, _ = make_client(service, handler)
     response = client.post("/api/chat/stream", headers=OWNER_HEADERS, json={"message": "Salut"})
@@ -411,8 +497,16 @@ def test_stream_failure_is_logged_without_the_agent_body(service, caplog):
 
 
 def test_warmup_sends_the_tool_free_probe_and_reports_readiness(service):
-    client, sent = make_client(service, lambda request: httpx.Response(200, json={"id": "resp_3", "output": [
-        {"type": "message", "content": [{"type": "output_text", "text": WARMUP_EXPECTED}]}]}))
+    client, sent = make_client(
+        service,
+        lambda request: httpx.Response(
+            200,
+            json={
+                "id": "resp_3",
+                "output": [{"type": "message", "content": [{"type": "output_text", "text": WARMUP_EXPECTED}]}],
+            },
+        ),
+    )
     response = client.post("/api/warmup", headers=OWNER_HEADERS)
     assert response.status_code == 200
     # The warm conversation is handed over so the next first message reuses its session.
@@ -426,10 +520,13 @@ def test_warmup_is_not_ready_when_the_agent_answers_something_else(service):
     assert client.post("/api/warmup", headers=OWNER_HEADERS).json() == {"ready": False}
 
 
-@pytest.mark.parametrize("handler,status", [
-    (lambda request: httpx.Response(500, text="secret upstream detail"), 502),
-    (lambda request: (_ for _ in ()).throw(httpx.ReadTimeout("slow")), 504),
-])
+@pytest.mark.parametrize(
+    "handler,status",
+    [
+        (lambda request: httpx.Response(500, text="secret upstream detail"), 502),
+        (lambda request: (_ for _ in ()).throw(httpx.ReadTimeout("slow")), 504),
+    ],
+)
 def test_warmup_maps_agent_failures_without_leaking_details(service, handler, status):
     client, _ = make_client(service, handler)
     response = client.post("/api/warmup", headers=OWNER_HEADERS)
@@ -443,15 +540,38 @@ def test_warmup_probe_matches_the_agent_runtime_probe():
 
 
 def test_stream_labels_a_toolbox_dispatch_with_the_inner_tool_name_only(service):
-    client, _ = make_client(service, lambda request: agent_stream(
-        {"type": "response.output_item.added", "item": {"type": "function_call", "call_id": "call_3", "name": "call_tool"}},
-        {"type": "response.output_item.done", "item": {"type": "function_call", "call_id": "call_3", "name": "call_tool",
-         "arguments": "{\"name\": \"outlook-sa2___outlook_GetEmails\", \"arguments\": {\"searchQuery\": \"secret\"}}"}},
-        {"type": "response.output_item.done", "item": {"type": "function_call", "call_id": "call_4", "name": "call_tool",
-         "arguments": "{\"name\": \"bad name!\", \"arguments\": {}}"}},
-        {"type": "response.output_item.done", "item": {"type": "function_call", "call_id": "call_5", "name": "call_tool",
-         "arguments": "not json"}},
-        {"type": "response.completed", "response": {"id": "resp_3"}}))
+    client, _ = make_client(
+        service,
+        lambda request: agent_stream(
+            {
+                "type": "response.output_item.added",
+                "item": {"type": "function_call", "call_id": "call_3", "name": "call_tool"},
+            },
+            {
+                "type": "response.output_item.done",
+                "item": {
+                    "type": "function_call",
+                    "call_id": "call_3",
+                    "name": "call_tool",
+                    "arguments": '{"name": "outlook-sa2___outlook_GetEmails", "arguments": {"searchQuery": "secret"}}',
+                },
+            },
+            {
+                "type": "response.output_item.done",
+                "item": {
+                    "type": "function_call",
+                    "call_id": "call_4",
+                    "name": "call_tool",
+                    "arguments": '{"name": "bad name!", "arguments": {}}',
+                },
+            },
+            {
+                "type": "response.output_item.done",
+                "item": {"type": "function_call", "call_id": "call_5", "name": "call_tool", "arguments": "not json"},
+            },
+            {"type": "response.completed", "response": {"id": "resp_3"}},
+        ),
+    )
     response = client.post("/api/chat/stream", headers=OWNER_HEADERS, json={"message": "Mail?"})
     assert read_events(response) == [
         {"type": "tool", "id": "call_3", "name": "call_tool", "status": "running"},
@@ -463,11 +583,24 @@ def test_stream_labels_a_toolbox_dispatch_with_the_inner_tool_name_only(service)
 
 def test_stream_flags_a_sign_in_answer_without_relaying_the_link(service):
     link = "https://logic-italynorth-001.consent.azure-apihub.net/login?data=SECRET"
-    client, _ = make_client(service, lambda request: agent_stream(
-        {"type": "response.output_item.added", "item": {"type": "function_call", "call_id": "call_6", "name": "call_tool"}},
-        {"type": "response.output_item.done", "item": {"type": "function_call_output", "call_id": "call_6", "output": link}},
-        {"type": "response.output_item.done", "item": {"type": "function_call_output", "call_id": "call_7", "output": "[]"}},
-        {"type": "response.completed", "response": {"id": "resp_6"}}))
+    client, _ = make_client(
+        service,
+        lambda request: agent_stream(
+            {
+                "type": "response.output_item.added",
+                "item": {"type": "function_call", "call_id": "call_6", "name": "call_tool"},
+            },
+            {
+                "type": "response.output_item.done",
+                "item": {"type": "function_call_output", "call_id": "call_6", "output": link},
+            },
+            {
+                "type": "response.output_item.done",
+                "item": {"type": "function_call_output", "call_id": "call_7", "output": "[]"},
+            },
+            {"type": "response.completed", "response": {"id": "resp_6"}},
+        ),
+    )
     response = client.post("/api/chat/stream", headers=OWNER_HEADERS, json={"message": "Mail?"})
     assert read_events(response) == [
         {"type": "tool", "id": "call_6", "name": "call_tool", "status": "running"},
@@ -487,9 +620,18 @@ def test_voice_mode_is_relayed_as_responses_metadata_on_both_chat_routes(service
     assert client.post("/api/chat", headers=OWNER_HEADERS, json={"message": "x", "mode": "shout"}).status_code == 422
     assert len(sent) == 2
 
-    client, sent = make_client(service, lambda request: agent_stream(
-        {"type": "response.completed", "response": {"id": "resp_3", "output": []}}))
-    client.post("/api/chat/stream", headers=OWNER_HEADERS,
-                json={"message": "Météo ?", "conversation_id": "resp_1", "mode": "voice"})
-    assert json.loads(sent[0].content) == {"input": "Météo ?", "stream": True, "previous_response_id": "resp_1",
-                                           "metadata": {"channel": "voice"}}
+    client, sent = make_client(
+        service,
+        lambda request: agent_stream({"type": "response.completed", "response": {"id": "resp_3", "output": []}}),
+    )
+    client.post(
+        "/api/chat/stream",
+        headers=OWNER_HEADERS,
+        json={"message": "Météo ?", "conversation_id": "resp_1", "mode": "voice"},
+    )
+    assert json.loads(sent[0].content) == {
+        "input": "Météo ?",
+        "stream": True,
+        "previous_response_id": "resp_1",
+        "metadata": {"channel": "voice"},
+    }

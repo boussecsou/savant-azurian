@@ -7,7 +7,7 @@ AGENTS.md.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 OWNER_TIMEZONE = "Africa/Casablanca"
@@ -121,11 +121,11 @@ def current_time_context(now: datetime | None = None) -> str:
     """The per-turn clock line. The model has no clock of its own: without it, it
     searches the web for the wrong day. Kept out of BASE_IDENTITY and appended last
     so the long stable prefix still matches Azure OpenAI's prompt cache."""
-    now = now or datetime.now(timezone.utc)
+    now = now or datetime.now(UTC)
     try:
         local, label = now.astimezone(ZoneInfo(OWNER_TIMEZONE)), OWNER_TIMEZONE
     except ZoneInfoNotFoundError:
         # A missing tz database must not stop the agent: fall back to UTC, clearly labelled.
-        local, label = now.astimezone(timezone.utc), "UTC"
+        local, label = now.astimezone(UTC), "UTC"
     offset = local.strftime("%z")
     return f"\nCurrent date and time ({label}): {local:%A %d %B %Y, %H:%M} (UTC{offset[:3]}:{offset[3:]})."

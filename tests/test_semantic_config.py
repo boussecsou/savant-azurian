@@ -1,7 +1,9 @@
 """Configuration and model wiring for the isolated approval classifier."""
-import pytest
+
 from contextlib import asynccontextmanager
 from types import SimpleNamespace
+
+import pytest
 
 from savant.agent import build_model, build_server
 from savant.config import Settings
@@ -53,9 +55,12 @@ def test_build_model_uses_separate_tool_free_classifier_configuration(monkeypatc
     monkeypatch.setattr("savant.agent.DefaultAzureCredential", lambda: object())
     monkeypatch.setattr("savant.agent.get_bearer_token_provider", lambda *args: "fake-token")
     monkeypatch.setattr("savant.agent.ChatOpenAI", FakeChatModel)
-    settings = Settings("https://model.example/openai/v1/", "chat-model",
-                        semantic_approval_model="approval-model",
-                        semantic_approval_timeout=4.5)
+    settings = Settings(
+        "https://model.example/openai/v1/",
+        "chat-model",
+        semantic_approval_model="approval-model",
+        semantic_approval_timeout=4.5,
+    )
 
     model = build_model(settings, (), guardrail=True)
 
@@ -91,6 +96,7 @@ def test_build_server_wires_classifier_model_and_configured_timeout(monkeypatch)
             self.app = SimpleNamespace(router=SimpleNamespace(lifespan_context=lifespan_context))
 
     approval_model = object()
+
     def fake_build_model(settings, tools=(), *, guardrail=False, token_provider=None):
         captured["model_args"] = (settings, tools, guardrail)
         return approval_model
@@ -99,15 +105,20 @@ def test_build_server_wires_classifier_model_and_configured_timeout(monkeypatch)
     monkeypatch.setattr("savant.semantic_approval.SemanticApprovalGuardrail", FakeGuardrail)
     monkeypatch.setattr("savant.semantic_approval.ConversationalResponsesHostServer", FakeHost)
     monkeypatch.setattr("savant.agent.build_model", fake_build_model)
-    monkeypatch.setattr("savant.tools.notion_chat.build_direct_chat_graph",
-                        lambda *args, **kwargs: captured.update(graph_kwargs=kwargs) or "fake-graph")
+    monkeypatch.setattr(
+        "savant.tools.notion_chat.build_direct_chat_graph",
+        lambda *args, **kwargs: captured.update(graph_kwargs=kwargs) or "fake-graph",
+    )
 
-    settings = Settings("https://model.example/openai/v1/", "chat-model",
-                        notion_mcp_enabled=True,
-                        notion_oauth_callback_url="https://callback.example/oauth/notion/callback",
-                        notion_oauth_store_url="https://storage.example/oauth.enc",
-                        semantic_approval_model="approval-model",
-                        semantic_approval_timeout=6.25)
+    settings = Settings(
+        "https://model.example/openai/v1/",
+        "chat-model",
+        notion_mcp_enabled=True,
+        notion_oauth_callback_url="https://callback.example/oauth/notion/callback",
+        notion_oauth_store_url="https://storage.example/oauth.enc",
+        semantic_approval_model="approval-model",
+        semantic_approval_timeout=6.25,
+    )
     server = build_server(settings)
 
     assert isinstance(server, FakeHost)

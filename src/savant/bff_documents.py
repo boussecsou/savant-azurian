@@ -4,6 +4,7 @@ Mounted by `bff_api` behind the same Easy Auth owner check as the chat, and only
 (the project must exist in Cosmos DB). The file travels as the raw request body (`?name=` gives its name),
 so no form parser is needed. Nothing here logs a name, an id or content: failures are reported by kind.
 """
+
 from __future__ import annotations
 
 import logging
@@ -67,8 +68,14 @@ def create_documents_router(library: DocumentLibrary, workspace: WorkspaceServic
         name, content_type, data = await guarded(project_id, lambda: library.file(project_id, document_id))
         # Inline, so a PDF opens in the browser's viewer; the name is encoded (RFC 5987). nosniff keeps
         # a text file as text. (A CSP sandbox would stop Chrome's PDF viewer.)
-        return Response(data, media_type=content_type, headers={
-            "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff",
-            "Content-Disposition": f"inline; filename*=UTF-8''{quote(name)}"})
+        return Response(
+            data,
+            media_type=content_type,
+            headers={
+                "Cache-Control": "no-store",
+                "X-Content-Type-Options": "nosniff",
+                "Content-Disposition": f"inline; filename*=UTF-8''{quote(name)}",
+            },
+        )
 
     return router

@@ -21,16 +21,39 @@ from langchain_core.tools import BaseTool
 
 # Defense in depth if a server release accidentally marks a known write as read.
 # This is a deny-automatic-execution set, never an allowlist of available tools.
-_MUTATIVE_NAMES = frozenset({
-    "create-attachment", "create-file-upload", "create-pages", "create-database",
-    "update-page", "convert-page-to-skill", "update-data-source", "create-view",
-    "update-view", "move-pages", "duplicate-page", "create-comment",
-    "delete-pages", "delete-databases", "restore-pages", "create-folder",
-    "update-folder", "upload-skill", "update-enabled-skills", "spawn-session",
-    "stop-session", "send-message-to-session", "update-comment", "delete-comment",
-    "set-discussion-resolved", "set-comment-reaction", "calendar-create-events",
-    "calendar-update-events", "calendar-cancel-events",
-})
+_MUTATIVE_NAMES = frozenset(
+    {
+        "create-attachment",
+        "create-file-upload",
+        "create-pages",
+        "create-database",
+        "update-page",
+        "convert-page-to-skill",
+        "update-data-source",
+        "create-view",
+        "update-view",
+        "move-pages",
+        "duplicate-page",
+        "create-comment",
+        "delete-pages",
+        "delete-databases",
+        "restore-pages",
+        "create-folder",
+        "update-folder",
+        "upload-skill",
+        "update-enabled-skills",
+        "spawn-session",
+        "stop-session",
+        "send-message-to-session",
+        "update-comment",
+        "delete-comment",
+        "set-discussion-resolved",
+        "set-comment-reaction",
+        "calendar-create-events",
+        "calendar-update-events",
+        "calendar-cancel-events",
+    }
+)
 
 
 def tool_annotations(tool: BaseTool) -> dict[str, Any]:
@@ -66,8 +89,12 @@ def tool_fingerprint(tool: BaseTool) -> str:
     schema = tool.args_schema
     if not isinstance(schema, dict):
         schema = schema.model_json_schema() if schema is not None else tool.get_input_schema().model_json_schema()
-    payload = {"name": tool.name, "input_schema": schema,
-               "description": tool.description, "annotations": tool_annotations(tool)}
+    payload = {
+        "name": tool.name,
+        "input_schema": schema,
+        "description": tool.description,
+        "annotations": tool_annotations(tool),
+    }
     encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False)
     return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
 
@@ -86,11 +113,19 @@ def protected_tool_names(tools: Iterable[BaseTool]) -> set[str]:
     return {name for name, tool in catalog_tools(tools).items() if requires_approval(tool)}
 
 
-_ADDITIVE_TOOLS = frozenset({
-    "notion-create-pages", "notion-create-database", "notion-create-view",
-    "notion-create-comment", "notion-create-attachment", "notion-create-file-upload",
-    "notion-create-folder", "notion-duplicate-page", "notion-restore-pages",
-})
+_ADDITIVE_TOOLS = frozenset(
+    {
+        "notion-create-pages",
+        "notion-create-database",
+        "notion-create-view",
+        "notion-create-comment",
+        "notion-create-attachment",
+        "notion-create-file-upload",
+        "notion-create-folder",
+        "notion-duplicate-page",
+        "notion-restore-pages",
+    }
+)
 _PRESENTATION_TAGS = frozenset({"table", "colgroup", "col", "tr", "td", "b", "i", "s", "u", "br", "p"})
 
 
@@ -125,10 +160,16 @@ def _preserves_content(old: str, new: str) -> bool:
     after.feed(new)
     if before.unknown_tag or after.unknown_tag:
         return False
-    tokens = lambda text: Counter(re.findall(r"[^\W_]+", html.unescape(text).casefold(), re.UNICODE))
+
+    def tokens(text):
+        return Counter(re.findall(r"[^\W_]+", html.unescape(text).casefold(), re.UNICODE))
+
     if tokens(" ".join(before.parts)) - tokens(" ".join(after.parts)):
         return False
-    symbols = lambda text: Counter(c for c in text if unicodedata.category(c).startswith("S"))
+
+    def symbols(text):
+        return Counter(c for c in text if unicodedata.category(c).startswith("S"))
+
     if symbols(" ".join(before.parts)) - symbols(" ".join(after.parts)):
         return False
     links = re.findall(r"(?:https?://|notion-file-block://)[^\s<>\)\]]+", old)
@@ -158,14 +199,31 @@ def may_execute_without_approval(tool: BaseTool, args: dict) -> bool:
         if args.get("command") == "add_subfolder":
             return set(args) <= common | {"title"} and isinstance(args.get("title"), str) and bool(args["title"])
         if args.get("command") == "add_files":
-            return set(args) <= common | {"file_upload_ids"} and isinstance(args.get("file_upload_ids"), list) and bool(args["file_upload_ids"])
+            return (
+                set(args) <= common | {"file_upload_ids"}
+                and isinstance(args.get("file_upload_ids"), list)
+                and bool(args["file_upload_ids"])
+            )
         return False
     if tool.name != "notion-update-page":
         return False
-    common = {"page_id", "command", "allow_async", "instructions_version", "properties", "icon", "cover", "is_skill", "allow_deleting_content"}
+    common = {
+        "page_id",
+        "command",
+        "allow_async",
+        "instructions_version",
+        "properties",
+        "icon",
+        "cover",
+        "is_skill",
+        "allow_deleting_content",
+    }
     command = args.get("command")
-    command_fields = {"insert_content": {"content", "position"}, "update_properties": set(),
-                      "update_content": {"content_updates"}}
+    command_fields = {
+        "insert_content": {"content", "position"},
+        "update_properties": set(),
+        "update_content": {"content_updates"},
+    }
     if command not in command_fields or set(args) - (common | command_fields[command]):
         return False
     if args.get("allow_deleting_content") is True:
@@ -178,12 +236,17 @@ def may_execute_without_approval(tool: BaseTool, args: dict) -> bool:
         return any(key in args for key in ("properties", "icon", "cover"))
     if command == "update_content":
         updates = args.get("content_updates")
-        return isinstance(updates, list) and bool(updates) and all(
-            isinstance(item, dict) and isinstance(item.get("old_str"), str)
-            and isinstance(item.get("new_str"), str)
-            and not (set(item) - {"old_str", "new_str", "replace_all_matches"})
-            and _preserves_content(item["old_str"], item["new_str"])
-            for item in updates
+        return (
+            isinstance(updates, list)
+            and bool(updates)
+            and all(
+                isinstance(item, dict)
+                and isinstance(item.get("old_str"), str)
+                and isinstance(item.get("new_str"), str)
+                and not (set(item) - {"old_str", "new_str", "replace_all_matches"})
+                and _preserves_content(item["old_str"], item["new_str"])
+                for item in updates
+            )
         )
     # Full replacement, unknown commands and incomplete arguments may delete data.
     return False

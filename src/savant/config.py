@@ -4,11 +4,10 @@ from __future__ import annotations
 
 import os
 import re
-from urllib.parse import urlparse
 from dataclasses import dataclass
+from urllib.parse import urlparse
 
 from dotenv import load_dotenv
-
 
 NOTION_MCP_DEFAULT_URL = "https://mcp.notion.com/mcp"
 # "" means: send nothing and keep the provider default.
@@ -18,13 +17,7 @@ REASONING_EFFORTS = frozenset({"", "minimal", "low", "medium", "high"})
 def _env_names(name: str) -> tuple[str, ...]:
     """Parse a comma-separated list of MCP tool names."""
 
-    return tuple(
-        dict.fromkeys(
-            value.strip()
-            for value in os.environ.get(name, "").split(",")
-            if value.strip()
-        )
-    )
+    return tuple(dict.fromkeys(value.strip() for value in os.environ.get(name, "").split(",") if value.strip()))
 
 
 def _env_bool(name: str, *, default: bool = False) -> bool:
@@ -86,7 +79,7 @@ class Settings:
         return bool(self.ssh_host)
 
     @classmethod
-    def from_env(cls) -> "Settings":
+    def from_env(cls) -> Settings:
         load_dotenv(override=False)
         base_url = os.environ.get("AZURE_OPENAI_BASE_URL", "").strip()
         model_name = os.environ.get("AZURE_AI_MODEL_DEPLOYMENT_NAME", "").strip()
@@ -106,7 +99,9 @@ class Settings:
         identity_diagnostics = _env_bool("NOTION_IDENTITY_DIAGNOSTICS")
         backend = os.environ.get("NOTION_BACKEND", "direct").strip()
         toolbox_name = os.environ.get("NOTION_TOOLBOX_NAME", "sa2-notion-tools").strip()
-        project_endpoint = (os.environ.get("FOUNDRY_PROJECT_ENDPOINT") or os.environ.get("AZURE_AI_PROJECT_ENDPOINT", "")).strip()
+        project_endpoint = (
+            os.environ.get("FOUNDRY_PROJECT_ENDPOINT") or os.environ.get("AZURE_AI_PROJECT_ENDPOINT", "")
+        ).strip()
         toolbox_endpoint = os.environ.get("TOOLBOX_ENDPOINT", "").strip()
         callback_url = os.environ.get("NOTION_OAUTH_CALLBACK_URL", "").strip()
         store_url = os.environ.get("NOTION_OAUTH_STORE_URL", "").strip()
@@ -118,7 +113,15 @@ class Settings:
         if toolbox_endpoint:
             parsed = urlparse(toolbox_endpoint)
             match = re.fullmatch(r"(/api/projects/[^/]+)/toolboxes/[^/]+(?:/versions/[^/]+)?/mcp", parsed.path)
-            if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password or parsed.fragment or not match or parsed.query != "api-version=v1":
+            if (
+                parsed.scheme != "https"
+                or not parsed.hostname
+                or parsed.username
+                or parsed.password
+                or parsed.fragment
+                or not match
+                or parsed.query != "api-version=v1"
+            ):
                 raise RuntimeError("TOOLBOX_ENDPOINT must be an HTTPS Foundry MCP endpoint with api-version=v1.")
             project_endpoint = f"https://{parsed.netloc}{match[1]}"
             if notion_enabled and not (backend == "direct" and callback_url):
@@ -130,8 +133,18 @@ class Settings:
                 raise RuntimeError("Chat OAuth requires NOTION_BACKEND=direct.")
             callback = urlparse(callback_url)
             local_callback = callback.hostname in {"localhost", "127.0.0.1", "::1"}
-            if (callback.scheme != "https" and not (callback.scheme == "http" and local_callback)) or not callback.hostname or callback.username or callback.password or callback.query or callback.fragment or callback.path != "/oauth/notion/callback":
-                raise RuntimeError("NOTION_OAUTH_CALLBACK_URL must be HTTPS with path /oauth/notion/callback (HTTP loopback is allowed locally).")
+            if (
+                (callback.scheme != "https" and not (callback.scheme == "http" and local_callback))
+                or not callback.hostname
+                or callback.username
+                or callback.password
+                or callback.query
+                or callback.fragment
+                or callback.path != "/oauth/notion/callback"
+            ):
+                raise RuntimeError(
+                    "NOTION_OAUTH_CALLBACK_URL must be HTTPS with path /oauth/notion/callback (HTTP loopback is allowed locally)."
+                )
             if not store_url:
                 raise RuntimeError("NOTION_OAUTH_STORE_URL is required for chat OAuth.")
             if local_user and not local_callback:
@@ -155,9 +168,7 @@ class Settings:
         if notion_enabled and not notion_url:
             raise RuntimeError("NOTION_MCP_URL must not be empty when Notion MCP is enabled.")
         if set(read_tool_names) & set(write_tool_names):
-            raise RuntimeError(
-                "A Notion MCP tool cannot be configured as both read and write."
-            )
+            raise RuntimeError("A Notion MCP tool cannot be configured as both read and write.")
 
         approval_model = os.environ.get("SEMANTIC_APPROVAL_MODEL", "").strip()
         try:
@@ -171,7 +182,8 @@ class Settings:
         if reasoning_effort not in REASONING_EFFORTS:
             raise RuntimeError(
                 "MODEL_REASONING_EFFORT must be one of: "
-                + ", ".join(repr(value) for value in sorted(REASONING_EFFORTS)) + "."
+                + ", ".join(repr(value) for value in sorted(REASONING_EFFORTS))
+                + "."
             )
 
         ssh = _ssh_settings()
@@ -249,8 +261,15 @@ def _ssh_settings() -> dict:
     if len(key_parts) < 2 or not key_parts[0].startswith(("ssh-", "ecdsa-")):
         raise RuntimeError("SSH_HOST_KEY must be a public host key line such as 'ssh-ed25519 AAAA...'.")
     vault = urlparse(values["SSH_KEY_VAULT_URL"])
-    if (vault.scheme != "https" or not vault.hostname or not vault.hostname.endswith(".vault.azure.net")
-            or vault.netloc != vault.hostname or vault.path not in {"", "/"} or vault.query or vault.fragment):
+    if (
+        vault.scheme != "https"
+        or not vault.hostname
+        or not vault.hostname.endswith(".vault.azure.net")
+        or vault.netloc != vault.hostname
+        or vault.path not in {"", "/"}
+        or vault.query
+        or vault.fragment
+    ):
         raise RuntimeError("SSH_KEY_VAULT_URL must be an HTTPS Azure Key Vault URL.")
     if not re.fullmatch(r"[A-Za-z0-9-]{1,127}", values["SSH_KEY_SECRET_NAME"]):
         raise RuntimeError("SSH_KEY_SECRET_NAME must name a Key Vault secret.")
@@ -262,7 +281,13 @@ def _ssh_settings() -> dict:
         raise RuntimeError("SSH_PORT and the SSH timeouts must be numbers.") from error
     if not 0 < port < 65536 or not 0 < connect <= 60 or not 0 < command <= 120:
         raise RuntimeError("SSH_PORT or an SSH timeout is out of range.")
-    return {"ssh_host": values["SSH_HOST"], "ssh_port": port, "ssh_user": values["SSH_USER"],
-            "ssh_host_key": " ".join(key_parts[:2]), "ssh_key_vault_url": values["SSH_KEY_VAULT_URL"],
-            "ssh_key_secret_name": values["SSH_KEY_SECRET_NAME"],
-            "ssh_connect_timeout": connect, "ssh_command_timeout": command}
+    return {
+        "ssh_host": values["SSH_HOST"],
+        "ssh_port": port,
+        "ssh_user": values["SSH_USER"],
+        "ssh_host_key": " ".join(key_parts[:2]),
+        "ssh_key_vault_url": values["SSH_KEY_VAULT_URL"],
+        "ssh_key_secret_name": values["SSH_KEY_SECRET_NAME"],
+        "ssh_connect_timeout": connect,
+        "ssh_command_timeout": command,
+    }

@@ -4,24 +4,26 @@ No network activity occurs at construction. Both callback and Hosted Agent must
 use the same storage and encryption key. User IDs come from trusted request
 identity, never model arguments.
 """
+
 from __future__ import annotations
 
 import asyncio
 import base64
-from contextlib import asynccontextmanager
 import hashlib
 import json
 import math
 import os
-from pathlib import Path
 import secrets
 import sqlite3
 import time
-from typing import AsyncIterator, Protocol
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+from pathlib import Path
+from typing import Protocol
 from urllib.parse import urlencode, urlsplit
 
-from cryptography.fernet import Fernet
 import httpx
+from cryptography.fernet import Fernet
 
 MCP_URL = "https://mcp.notion.com/mcp"
 
@@ -57,6 +59,7 @@ class SQLiteOAuthStore:
                 return json.loads(self.cipher.decrypt(row[0])) if row else {}
             finally:
                 connection.close()
+
         return await asyncio.to_thread(load)
 
     @asynccontextmanager
@@ -82,9 +85,9 @@ class BlobOAuthStore:
     Contributor. One document intentionally keeps the single-user prototype small.
     """
 
-    def __init__(self, account_url: str, container: str, blob_name: str,
-                 encryption_key: str, credential):
+    def __init__(self, account_url: str, container: str, blob_name: str, encryption_key: str, credential):
         from azure.storage.blob.aio import BlobClient
+
         self.blob = BlobClient(account_url, container, blob_name, credential=credential)
         self.credential = credential
         self.cipher = Fernet(encryption_key.encode())
@@ -97,6 +100,7 @@ class BlobOAuthStore:
         """One download, no lease and no write: a blob upload is atomic, so this is a consistent
         snapshot. Used only to return a still-valid token; anything that changes data leases."""
         from azure.core.exceptions import ResourceNotFoundError
+
         try:
             download = await self.blob.download_blob()
         except ResourceNotFoundError:
@@ -105,7 +109,8 @@ class BlobOAuthStore:
 
     @asynccontextmanager
     async def transaction(self) -> AsyncIterator[dict]:
-        from azure.core.exceptions import ResourceExistsError, ResourceNotFoundError, HttpResponseError
+        from azure.core.exceptions import HttpResponseError, ResourceExistsError, ResourceNotFoundError
+
         try:
             await self.blob.get_blob_properties()
         except ResourceNotFoundError:
@@ -128,10 +133,12 @@ class BlobOAuthStore:
                 if exc.status_code != 409 or time.monotonic() >= deadline:
                     raise OAuthError("Notion credential storage unavailable.") from None
                 await asyncio.sleep(0.2)
+
         async def renew():
             while True:
                 await asyncio.sleep(20)
                 await lease.renew()
+
         renewal = asyncio.create_task(renew())
         try:
             download = await self.blob.download_blob(lease=lease)
@@ -139,8 +146,7 @@ class BlobOAuthStore:
             yield data
             if renewal.done():
                 renewal.result()
-            await self.blob.upload_blob(self.cipher.encrypt(json.dumps(data).encode()),
-                                        overwrite=True, lease=lease)
+            await self.blob.upload_blob(self.cipher.encrypt(json.dumps(data).encode()), overwrite=True, lease=lease)
         finally:
             renewal.cancel()
             try:
@@ -151,13 +157,20 @@ class BlobOAuthStore:
 
 
 class NotionOAuth:
-    def __init__(self, callback_url: str, store: OAuthStore,
-                 http_client: httpx.AsyncClient | None = None, clock=time.time):
+    def __init__(
+        self, callback_url: str, store: OAuthStore, http_client: httpx.AsyncClient | None = None, clock=time.time
+    ):
         url = urlsplit(callback_url)
-        if (url.scheme != "https" and not
-                (url.scheme == "http" and url.hostname in {"127.0.0.1", "localhost", "::1"})):
+        if url.scheme != "https" and not (url.scheme == "http" and url.hostname in {"127.0.0.1", "localhost", "::1"}):
             raise ValueError("OAuth callback requires HTTPS (HTTP loopback only for development).")
-        if url.query or url.fragment or url.username is not None or url.password is not None or not url.hostname or url.path != "/oauth/notion/callback":
+        if (
+            url.query
+            or url.fragment
+            or url.username is not None
+            or url.password is not None
+            or not url.hostname
+            or url.path != "/oauth/notion/callback"
+        ):
             raise ValueError("Invalid OAuth callback URL.")
         self.callback_url, self.store, self.http_client, self.clock = callback_url, store, http_client, clock
         # A valid access token, remembered for a few seconds: one turn asks for it up to three
@@ -175,7 +188,15 @@ class NotionOAuth:
     @staticmethod
     def _endpoint(value: str) -> str:
         url = urlsplit(value)
-        if url.scheme != "https" or url.hostname != "mcp.notion.com" or url.port not in {None, 443} or url.username is not None or url.password is not None or url.fragment or url.query:
+        if (
+            url.scheme != "https"
+            or url.hostname != "mcp.notion.com"
+            or url.port not in {None, 443}
+            or url.username is not None
+            or url.password is not None
+            or url.fragment
+            or url.query
+        ):
             raise OAuthError("Unexpected Notion OAuth endpoint.")
         return value
 
@@ -204,14 +225,24 @@ class NotionOAuth:
         if "S256" not in metadata.get("code_challenge_methods_supported", []):
             raise OAuthError("Notion OAuth does not advertise required PKCE support.")
         try:
-            endpoints = {name: self._endpoint(metadata[name]) for name in
-                         ("authorization_endpoint", "token_endpoint", "registration_endpoint")}
+            endpoints = {
+                name: self._endpoint(metadata[name])
+                for name in ("authorization_endpoint", "token_endpoint", "registration_endpoint")
+            }
         except (KeyError, TypeError):
             raise OAuthError("Invalid Notion OAuth metadata.") from None
-        registration = await self._request("POST", endpoints["registration_endpoint"], json={
-            "client_name": "Savant Azurian 2", "redirect_uris": [self.callback_url],
-            "grant_types": ["authorization_code", "refresh_token"],
-            "response_types": ["code"], "token_endpoint_auth_method": "none", "scope": "default"})
+        registration = await self._request(
+            "POST",
+            endpoints["registration_endpoint"],
+            json={
+                "client_name": "Savant Azurian 2",
+                "redirect_uris": [self.callback_url],
+                "grant_types": ["authorization_code", "refresh_token"],
+                "response_types": ["code"],
+                "token_endpoint_auth_method": "none",
+                "scope": "default",
+            },
+        )
         if not isinstance(registration.get("client_id"), str) or not registration["client_id"]:
             raise OAuthError("Invalid Notion OAuth registration.")
         if registration.get("token_endpoint_auth_method", "none") != "none":
@@ -241,11 +272,23 @@ class NotionOAuth:
                     return flow["url"]
             state, verifier = secrets.token_urlsafe(32), secrets.token_urlsafe(32)
             challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).decode().rstrip("=")
-            url = client["authorization_endpoint"] + "?" + urlencode({
-                "response_type": "code", "client_id": client["client_id"],
-                "redirect_uri": self.callback_url, "state": state,
-                "code_challenge": challenge, "code_challenge_method": "S256",
-                "resource": MCP_URL, "scope": "default", "prompt": "consent"})
+            url = (
+                client["authorization_endpoint"]
+                + "?"
+                + urlencode(
+                    {
+                        "response_type": "code",
+                        "client_id": client["client_id"],
+                        "redirect_uri": self.callback_url,
+                        "state": state,
+                        "code_challenge": challenge,
+                        "code_challenge_method": "S256",
+                        "resource": MCP_URL,
+                        "scope": "default",
+                        "prompt": "consent",
+                    }
+                )
+            )
             pending[state] = {"user": user, "verifier": verifier, "expires_at": now + 600, "url": url}
             return url
 
@@ -261,10 +304,18 @@ class NotionOAuth:
         if not code or not client:
             raise OAuthError("Missing OAuth authorization code.")
         async with self.store.transaction() as data:
-            tokens = await self._request("POST", client["token_endpoint"], data={
-                "grant_type": "authorization_code", "client_id": client["client_id"],
-                "redirect_uri": self.callback_url, "code": code,
-                "code_verifier": flow["verifier"], "resource": MCP_URL})
+            tokens = await self._request(
+                "POST",
+                client["token_endpoint"],
+                data={
+                    "grant_type": "authorization_code",
+                    "client_id": client["client_id"],
+                    "redirect_uri": self.callback_url,
+                    "code": code,
+                    "code_verifier": flow["verifier"],
+                    "resource": MCP_URL,
+                },
+            )
             data.setdefault("tokens", {})[flow["user"]] = self._tokens(tokens)
 
     def _tokens(self, tokens, previous=None):
@@ -278,11 +329,15 @@ class NotionOAuth:
             raise OAuthError("Invalid Notion token lifetime.") from None
         if not math.isfinite(lifetime) or lifetime <= 0:
             raise OAuthError("Invalid Notion token lifetime.")
-        if tokens.get("refresh_token") is not None and (not isinstance(tokens["refresh_token"], str) or not tokens["refresh_token"]):
+        if tokens.get("refresh_token") is not None and (
+            not isinstance(tokens["refresh_token"], str) or not tokens["refresh_token"]
+        ):
             raise OAuthError("Invalid Notion refresh token.")
-        return {"access_token": tokens["access_token"],
-                "refresh_token": tokens.get("refresh_token") or (previous or {}).get("refresh_token"),
-                "expires_at": self.clock() + lifetime}
+        return {
+            "access_token": tokens["access_token"],
+            "refresh_token": tokens.get("refresh_token") or (previous or {}).get("refresh_token"),
+            "expires_at": self.clock() + lifetime,
+        }
 
     FRESH_TOKEN_SECONDS = 30.0
 
@@ -312,9 +367,16 @@ class NotionOAuth:
                 return None
             client = data["client"]
             try:
-                refreshed = await self._request("POST", client["token_endpoint"], data={
-                    "grant_type": "refresh_token", "client_id": client["client_id"],
-                    "refresh_token": token["refresh_token"], "resource": MCP_URL})
+                refreshed = await self._request(
+                    "POST",
+                    client["token_endpoint"],
+                    data={
+                        "grant_type": "refresh_token",
+                        "client_id": client["client_id"],
+                        "refresh_token": token["refresh_token"],
+                        "resource": MCP_URL,
+                    },
+                )
             except OAuthError as exc:
                 if str(exc) != "invalid_grant":
                     raise

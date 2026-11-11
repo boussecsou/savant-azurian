@@ -1,4 +1,5 @@
 """Exercise the publishing shell without Azure, Docker or credentials."""
+
 import json
 import os
 import subprocess
@@ -12,20 +13,23 @@ DIGEST = "sha256:" + "b" * 64
 REGISTRY = "registry.azurecr.io"
 
 
-@pytest.mark.parametrize("scenario,v1,pushes,success", [
-    ("new", True, 2, True),
-    ("existing", False, 0, True),
-    ("existing", True, 1, True),
-    ("same_v1", True, 0, True),
-    ("conflict", True, 0, False),
-    ("auth_error", False, 0, False),
-    ("bad_revision", False, 0, False),
-    ("bad_digest", False, 0, False),
-    ("bad_lock", False, 0, False),
-])
+@pytest.mark.parametrize(
+    "scenario,v1,pushes,success",
+    [
+        ("new", True, 2, True),
+        ("existing", False, 0, True),
+        ("existing", True, 1, True),
+        ("same_v1", True, 0, True),
+        ("conflict", True, 0, False),
+        ("auth_error", False, 0, False),
+        ("bad_revision", False, 0, False),
+        ("bad_digest", False, 0, False),
+        ("bad_lock", False, 0, False),
+    ],
+)
 def test_publication_contract(tmp_path, scenario, v1, pushes, success):
     fake = tmp_path / "fake"
-    fake.write_text('''#!/usr/bin/env python3
+    fake.write_text("""#!/usr/bin/env python3
 import json, os, sys
 from pathlib import Path
 args = sys.argv[1:]
@@ -59,15 +63,22 @@ elif args[0:3] == ['acr', 'repository', 'show']:
     else:
         print(json.dumps({'digest': digest, 'changeableAttributes': {
             'writeEnabled': s == 'bad_lock', 'deleteEnabled': False}}))
-''')
+""")
     fake.chmod(0o755)
     for tool in ["az", "docker"]:
         (tmp_path / tool).symlink_to(fake)
-    env = dict(os.environ, PATH=f"{tmp_path}:{os.environ['PATH']}",
-               ACR_NAME="acrsavantazurian2", IMAGE_REPOSITORY="sa2-bff",
-               SOURCE_SHA=SHA, PUBLISH_V1=str(v1).lower(), SCENARIO=scenario,
-               CALLS=str(tmp_path / "calls"), GITHUB_OUTPUT=str(tmp_path / "output"),
-               GITHUB_STEP_SUMMARY=str(tmp_path / "summary"))
+    env = dict(
+        os.environ,
+        PATH=f"{tmp_path}:{os.environ['PATH']}",
+        ACR_NAME="acrsavantazurian2",
+        IMAGE_REPOSITORY="sa2-bff",
+        SOURCE_SHA=SHA,
+        PUBLISH_V1=str(v1).lower(),
+        SCENARIO=scenario,
+        CALLS=str(tmp_path / "calls"),
+        GITHUB_OUTPUT=str(tmp_path / "output"),
+        GITHUB_STEP_SUMMARY=str(tmp_path / "summary"),
+    )
     result = subprocess.run(["bash", str(SCRIPT)], env=env, capture_output=True, text=True)
     assert (result.returncode == 0) == success, result.stdout + result.stderr
     calls = [json.loads(line) for line in (tmp_path / "calls").read_text().splitlines()]

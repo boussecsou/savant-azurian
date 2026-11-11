@@ -4,6 +4,7 @@ Claim before network I/O. A claimed action is never automatically reclaimable:
 process death or an uncertain response requires inspecting the remote result.
 The provided OAuth store supplies durable encryption and cross-process locking.
 """
+
 from __future__ import annotations
 
 import copy
@@ -15,8 +16,9 @@ from uuid import uuid4
 
 def operation_digest(operation: dict) -> str:
     """Fingerprint the exact tool, arguments and schema shown for approval."""
-    return hashlib.sha256(json.dumps(operation, sort_keys=True, separators=(",", ":"),
-                                     ensure_ascii=False, allow_nan=False).encode()).hexdigest()
+    return hashlib.sha256(
+        json.dumps(operation, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False).encode()
+    ).hexdigest()
 
 
 def _key(*parts: str) -> str:
@@ -65,8 +67,7 @@ class ApprovalLedger:
             record["finished_at"] = self.clock()
             return True
 
-    async def create(self, owner: str, thread: str, operation: dict,
-                     action_id: str | None = None) -> dict:
+    async def create(self, owner: str, thread: str, operation: dict, action_id: str | None = None) -> dict:
         scope = _key(owner, thread)
         action_id = action_id or str(uuid4())
         _key(action_id)
@@ -81,8 +82,14 @@ class ApprovalLedger:
                     raise ValueError("Action identifier already belongs to a different operation.")
                 return copy.deepcopy(existing)
             now = self.clock()
-            record = dict(action_id=action_id, digest=digest, operation=copy.deepcopy(operation),
-                          status="pending", created_at=now, expires_at=now + self.ttl)
+            record = dict(
+                action_id=action_id,
+                digest=digest,
+                operation=copy.deepcopy(operation),
+                status="pending",
+                created_at=now,
+                expires_at=now + self.ttl,
+            )
             actions[action_id] = record
             return copy.deepcopy(record)
 
@@ -99,8 +106,7 @@ class ApprovalLedger:
         async with self.store.transaction() as data:
             return copy.deepcopy(data.get("approval_presentations", {}).get(scope))
 
-    async def present(self, owner: str, thread: str, action_id: str,
-                      response_id: str) -> bool:
+    async def present(self, owner: str, thread: str, action_id: str, response_id: str) -> bool:
         """Record the one canonical operation actually offered for consent.
 
         Independent concurrent proposals cannot replace the first pending action.
@@ -118,20 +124,26 @@ class ApprovalLedger:
                     active.append(record["action_id"])
             if not active or active[0] != action_id:
                 return False
-            data.setdefault("approval_presentations", {})[scope] = {
-                "action_id": action_id, "response_id": response_id}
+            data.setdefault("approval_presentations", {})[scope] = {"action_id": action_id, "response_id": response_id}
             return True
 
-    async def claim(self, owner: str, thread: str, action_id: str, digest: str,
-                    *, message_id: str, presentation_id: str | None = None) -> bool:
+    async def claim(
+        self,
+        owner: str,
+        thread: str,
+        action_id: str,
+        digest: str,
+        *,
+        message_id: str,
+        presentation_id: str | None = None,
+    ) -> bool:
         scope, message_key = _key(owner, thread), _key(owner, thread, message_id)
         async with self.store.transaction() as data:
             record = data.get("approval_actions", {}).get(scope, {}).get(action_id)
             used = data.setdefault("approval_consumed_messages", {})
             if presentation_id is not None:
                 presented = data.get("approval_presentations", {}).get(scope, {})
-                if (presented.get("action_id") != action_id or
-                        presented.get("response_id") != presentation_id):
+                if presented.get("action_id") != action_id or presented.get("response_id") != presentation_id:
                     return False
             if not record or record["status"] != "pending" or record["digest"] != digest:
                 return False

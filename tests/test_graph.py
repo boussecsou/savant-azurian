@@ -1,6 +1,5 @@
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 import pytest
-
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 from langchain_core.tools import StructuredTool
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.types import Command
@@ -72,14 +71,11 @@ def test_graph_reports_an_invalid_tool_name_without_crashing():
         )
     )
 
-    result = graph.invoke(
-        {"messages": [HumanMessage(content="appelle un outil qui n'existe pas")]}
-    )
+    result = graph.invoke({"messages": [HumanMessage(content="appelle un outil qui n'existe pas")]})
 
     tool_message = next(m for m in result["messages"] if isinstance(m, ToolMessage))
     assert tool_message.status == "error"
     assert result["messages"][-1].content == "Je ne peux pas utiliser cet outil."
-
 
 
 @pytest.mark.parametrize("approved", [True, False])
@@ -98,12 +94,21 @@ def test_notion_write_waits_for_approval_and_can_target_any_page(approved):
     )
     arguments = {"page_id": "any-authorized-page", "title": "Local test"}
     graph = build_graph(
-        FakeModel([
-            AIMessage(content="", tool_calls=[{
-                "name": "update_page", "args": arguments, "id": "write_1",
-            }]),
-            AIMessage(content="Terminé."),
-        ]),
+        FakeModel(
+            [
+                AIMessage(
+                    content="",
+                    tool_calls=[
+                        {
+                            "name": "update_page",
+                            "args": arguments,
+                            "id": "write_1",
+                        }
+                    ],
+                ),
+                AIMessage(content="Terminé."),
+            ]
+        ),
         tools=[write_tool],
         checkpointer=MemorySaver(),
         approval_tool_names=("update_page",),
@@ -137,12 +142,21 @@ def test_notion_read_does_not_need_approval():
         description="Read a Notion page.",
     )
     graph = build_graph(
-        FakeModel([
-            AIMessage(content="", tool_calls=[{
-                "name": "fetch", "args": {"page_id": "page"}, "id": "read_1",
-            }]),
-            AIMessage(content="Voici la page."),
-        ]),
+        FakeModel(
+            [
+                AIMessage(
+                    content="",
+                    tool_calls=[
+                        {
+                            "name": "fetch",
+                            "args": {"page_id": "page"},
+                            "id": "read_1",
+                        }
+                    ],
+                ),
+                AIMessage(content="Voici la page."),
+            ]
+        ),
         tools=[read_tool],
         checkpointer=MemorySaver(),
         approval_tool_names=("update_page",),

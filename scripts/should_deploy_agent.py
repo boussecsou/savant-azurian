@@ -1,4 +1,5 @@
 """Compatibility NUL-path interface backed by the shared component registry."""
+
 import sys
 from pathlib import Path
 

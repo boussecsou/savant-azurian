@@ -3,6 +3,7 @@
 The phrase map is test data only; production authorization is delegated to the
 structured-output model behind SemanticApprovalGuardrail.
 """
+
 import json
 import re
 
@@ -45,8 +46,11 @@ class SimulatedApprovalModel:
         payload = json.loads(messages[-1].content)
         text = payload.get("latest_user_message")
         decision = self.decisions.get(text.strip().casefold(), "CLARIFY") if isinstance(text, str) else "CLARIFY"
-        return {"raw": AIMessage(content="", response_metadata={"status": "completed"}),
-                "parsed": ApprovalDecision(decision=decision), "parsing_error": None}
+        return {
+            "raw": AIMessage(content="", response_metadata={"status": "completed"}),
+            "parsed": ApprovalDecision(decision=decision),
+            "parsing_error": None,
+        }
 
 
 def simulated_guardrail():
@@ -56,5 +60,6 @@ def simulated_guardrail():
 def asks_confirmation(text: str) -> bool:
     """A server-worded confirmation question, in French or English: it ends on a question mark and
     names the action (the exact wording follows the owner's language)."""
-    return text.rstrip().endswith("?") and bool(re.search(
-        r"to the trash|do you (want|confirm)|corbeille|tu (veux|confirmes)", text, re.IGNORECASE))
+    return text.rstrip().endswith("?") and bool(
+        re.search(r"to the trash|do you (want|confirm)|corbeille|tu (veux|confirmes)", text, re.IGNORECASE)
+    )

@@ -16,7 +16,8 @@ import json
 import random
 
 import httpx
-from jsonschema import exceptions as schema_exceptions, validators
+from jsonschema import exceptions as schema_exceptions
+from jsonschema import validators
 
 TOOL_TIMEOUT_SECONDS = 60.0
 LOADER_TIMEOUT_SECONDS = 30.0
@@ -63,12 +64,12 @@ def is_retryable_result(content) -> bool:
 def tool_rounds_this_turn(messages) -> int:
     """How many model steps asked for tools since the latest user message."""
     latest_human = max((i for i, m in enumerate(messages) if m.type == "human"), default=-1)
-    return sum(1 for m in messages[latest_human + 1:] if m.type == "ai" and getattr(m, "tool_calls", None))
+    return sum(1 for m in messages[latest_human + 1 :] if m.type == "ai" and getattr(m, "tool_calls", None))
 
 
 def retry_delay(attempt: int, retry_after: float | None = None, rng=random.random) -> float:
     """Exponential backoff with jitter (so retries do not line up), never shorter than a server's Retry-After."""
-    base = RETRY_DELAY_SECONDS * (2 ** attempt)
+    base = RETRY_DELAY_SECONDS * (2**attempt)
     delay = min(base + base * 0.25 * rng(), RETRY_MAX_DELAY_SECONDS)
     if retry_after is not None and retry_after > 0:
         delay = min(max(delay, retry_after), RETRY_MAX_DELAY_SECONDS)
@@ -119,8 +120,10 @@ def _clip_text(text: str) -> str:
     if len(text) <= MAX_TOOL_RESULT_CHARS:
         return text
     more = len(text) - MAX_TOOL_RESULT_CHARS
-    return (text[:MAX_TOOL_RESULT_CHARS] + f"\n[Truncated: {more} more characters. "
-            "Ask for a narrower part: a section, a smaller limit or the next page.]")
+    return (
+        text[:MAX_TOOL_RESULT_CHARS] + f"\n[Truncated: {more} more characters. "
+        "Ask for a narrower part: a section, a smaller limit or the next page.]"
+    )
 
 
 def cap_result(message):
@@ -135,7 +138,7 @@ def cap_result(message):
             if text is None:
                 clipped.append(block)
                 continue
-            piece = text if len(text) <= budget else text[:max(budget, 0)] + "\n[Truncated: ask for a narrower part.]"
+            piece = text if len(text) <= budget else text[: max(budget, 0)] + "\n[Truncated: ask for a narrower part.]"
             budget -= len(text)
             clipped.append({**block, "text": piece} if isinstance(block, dict) else piece)
     else:
@@ -156,8 +159,15 @@ def compact_history(messages, keep_turns: int = HISTORY_KEEP_TURNS):
     cutoff = humans[-keep_turns]
     compacted = []
     for index, message in enumerate(messages):
-        long_result = (index < cutoff and message.type == "tool" and
-                       len(message.content if isinstance(message.content, str) else json.dumps(message.content, default=str)) > HISTORY_KEEP_CHARS)
-        compacted.append(message.model_copy(update={"content": "[Result of an earlier step, left out to save space.]"})
-                         if long_result else message)
+        long_result = (
+            index < cutoff
+            and message.type == "tool"
+            and len(message.content if isinstance(message.content, str) else json.dumps(message.content, default=str))
+            > HISTORY_KEEP_CHARS
+        )
+        compacted.append(
+            message.model_copy(update={"content": "[Result of an earlier step, left out to save space.]"})
+            if long_result
+            else message
+        )
     return compacted

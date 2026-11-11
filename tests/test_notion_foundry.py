@@ -27,7 +27,9 @@ def test_invalid_foundry_configuration_fails_before_startup(monkeypatch, backend
 def test_foundry_tools_discovered_once_then_cached_and_writes_approved(monkeypatch, approved, platform_approval):
     calls, discoveries, exposed = [], [], []
     read = StructuredTool.from_function(lambda: "page", name="notion___fetch", description="Read")
-    write = StructuredTool.from_function(lambda: calls.append("write") or "done", name="notion___update", description="Write")
+    write = StructuredTool.from_function(
+        lambda: calls.append("write") or "done", name="notion___update", description="Write"
+    )
     hidden = StructuredTool.from_function(lambda: "hidden", name="other___delete", description="Hidden")
 
     class Toolbox:
@@ -48,7 +50,13 @@ def test_foundry_tools_discovered_once_then_cached_and_writes_approved(monkeypat
             return AIMessage(content="", tool_calls=[{"name": write.name, "args": {}, "id": "write-1"}])
 
     monkeypatch.setattr("savant.tools.notion_foundry.AzureAIProjectToolbox", Toolbox)
-    settings = Settings("https://model/", "model", notion_backend="foundry", notion_read_tool_names=(read.name, write.name) if platform_approval else (read.name,), notion_write_tool_names=() if platform_approval else (write.name,))
+    settings = Settings(
+        "https://model/",
+        "model",
+        notion_backend="foundry",
+        notion_read_tool_names=(read.name, write.name) if platform_approval else (read.name,),
+        notion_write_tool_names=() if platform_approval else (write.name,),
+    )
 
     def factory(tools):
         exposed.extend(t.name for t in tools)
@@ -73,7 +81,11 @@ def test_foundry_tools_discovered_once_then_cached_and_writes_approved(monkeypat
 
 
 def test_foundry_consent_surfaces_and_discovery_retries(monkeypatch):
-    consent = StructuredTool.from_function(lambda query: "Open https://consent.example then restart the agent", name="oauth_consent_required", description="Consent")
+    consent = StructuredTool.from_function(
+        lambda query: "Open https://consent.example then restart the agent",
+        name="oauth_consent_required",
+        description="Consent",
+    )
 
     class Toolbox:
         def __init__(self, **kwargs):
@@ -84,18 +96,22 @@ def test_foundry_consent_surfaces_and_discovery_retries(monkeypatch):
             return [consent]
 
     monkeypatch.setattr("savant.tools.notion_foundry.AzureAIProjectToolbox", Toolbox)
-    graph = build_foundry_graph(Settings("https://model/", "model"), lambda _: pytest.fail("No model call during consent"), MemorySaver())
+    graph = build_foundry_graph(
+        Settings("https://model/", "model"), lambda _: pytest.fail("No model call during consent"), MemorySaver()
+    )
 
     async def run():
         for thread in ["user-one", "user-two"]:
             result = await graph.ainvoke({"messages": ["Read"]}, {"configurable": {"thread_id": thread}})
             assert "send your request again" in result["messages"][-1].content
+
     asyncio.run(run())
 
 
 def test_versioned_toolbox_exposes_all_tools_and_honors_platform_approval(monkeypatch):
     endpoint = "https://account.services.ai.azure.com/api/projects/project/toolboxes/lab/versions/2/mcp?api-version=v1"
     from savant.tools.notion_foundry import EndpointToolbox
+
     real = EndpointToolbox(project_endpoint="https://project", toolbox_name="lab", mcp_endpoint=endpoint)
     assert real.toolbox_endpoint == endpoint
     calls, exposed = [], []
@@ -104,8 +120,10 @@ def test_versioned_toolbox_exposes_all_tools_and_honors_platform_approval(monkey
     class Toolbox:
         def __init__(self, **kwargs):
             assert kwargs["mcp_endpoint"] == endpoint
+
         async def get_tools(self):
             return [write]
+
         async def get_tools_requiring_approval(self):
             return [write.name]
 
@@ -116,10 +134,13 @@ def test_versioned_toolbox_exposes_all_tools_and_honors_platform_approval(monkey
             return AIMessage(content="", tool_calls=[{"name": write.name, "args": {}, "id": "one"}])
 
     monkeypatch.setattr("savant.tools.notion_foundry.EndpointToolbox", Toolbox)
+
     def factory(tools):
         exposed.extend(t.name for t in tools)
         return Model()
+
     graph = build_foundry_graph(Settings("https://model/", "model", toolbox_endpoint=endpoint), factory, MemorySaver())
+
     async def run():
         config = {"configurable": {"thread_id": "toolbox"}}
         result = await graph.ainvoke({"messages": ["write"]}, config)
@@ -128,22 +149,27 @@ def test_versioned_toolbox_exposes_all_tools_and_honors_platform_approval(monkey
         pending = result["__interrupt__"][0].value
         await graph.ainvoke(Command(resume=pending), config)
         assert calls == [1]
+
     asyncio.run(run())
 
 
 @pytest.mark.parametrize("version_path", ["", "/versions/2"])
 def test_endpoint_transport_preserves_url_and_refreshes_auth(monkeypatch, version_path):
-    from savant.tools.notion_foundry import EndpointToolbox
     import httpx2
     from azure.core.credentials import AccessToken
+
+    from savant.tools.notion_foundry import EndpointToolbox
 
     class Credential:
         def get_token(self, *scopes, **kwargs):
             assert scopes == ("https://ai.azure.com/.default",)
             return AccessToken("test-token", 4102444800)
 
-    endpoint = f"https://account.services.ai.azure.com/api/projects/project/toolboxes/lab{version_path}/mcp?api-version=v1"
+    endpoint = (
+        f"https://account.services.ai.azure.com/api/projects/project/toolboxes/lab{version_path}/mcp?api-version=v1"
+    )
     captured = []
+
     class Transport:
         def __init__(self, url, headers, auth):
             assert url == endpoint
@@ -151,16 +177,21 @@ def test_endpoint_transport_preserves_url_and_refreshes_auth(monkeypatch, versio
             request = httpx2.Request("POST", url)
             assert next(auth.auth_flow(request)).headers["Authorization"] == "Bearer test-token"
             captured.append(url)
+
     class Adapter:
         def __init__(self, client):
             pass
+
         async def list_tools(self, cache_mode):
             assert cache_mode == "bypass"
             return []
+
     monkeypatch.setattr("fastmcp.client.transports.StreamableHttpTransport", Transport)
     monkeypatch.setattr("fastmcp.Client", lambda transport, mode: transport)
     monkeypatch.setattr("langchain.mcp.MCPAdapter", Adapter)
-    toolbox = EndpointToolbox(project_endpoint="https://project", toolbox_name="lab", mcp_endpoint=endpoint, credential=Credential())
+    toolbox = EndpointToolbox(
+        project_endpoint="https://project", toolbox_name="lab", mcp_endpoint=endpoint, credential=Credential()
+    )
     assert asyncio.run(toolbox.get_tools()) == []
     assert captured == [endpoint]
 
@@ -169,9 +200,11 @@ def test_endpoint_toolbox_lists_tools_from_toolbox_without_2026_cache_fields(mon
     """The live toolbox accepts server/discover at 2026-07-28 but its tools/list
     lacks that revision's required fields; discovery must still succeed."""
     import json
+
     import httpx2
     from azure.core.credentials import AccessToken
     from fastmcp.client.transports import StreamableHttpTransport
+
     from savant.tools.notion_foundry import EndpointToolbox
 
     class Credential:
@@ -184,12 +217,16 @@ def test_endpoint_toolbox_lists_tools_from_toolbox_without_2026_cache_fields(mon
             return httpx2.Response(202)
         result = {
             "server/discover": {
-                "resultType": "complete", "ttlMs": 0, "cacheScope": "private",
-                "supportedVersions": ["2026-07-28"], "capabilities": {"tools": {}},
+                "resultType": "complete",
+                "ttlMs": 0,
+                "cacheScope": "private",
+                "supportedVersions": ["2026-07-28"],
+                "capabilities": {"tools": {}},
                 "serverInfo": {"name": "toolbox", "version": "1"},
             },
             "initialize": {
-                "protocolVersion": "2025-11-25", "capabilities": {"tools": {}},
+                "protocolVersion": "2025-11-25",
+                "capabilities": {"tools": {}},
                 "serverInfo": {"name": "toolbox", "version": "1"},
             },
             "tools/list": {"tools": [{"name": "notion-search", "inputSchema": {"type": "object"}}]},
@@ -206,7 +243,9 @@ def test_endpoint_toolbox_lists_tools_from_toolbox_without_2026_cache_fields(mon
 
     monkeypatch.setattr("fastmcp.client.transports.StreamableHttpTransport", Transport)
     endpoint = "https://account.services.ai.azure.com/api/projects/project/toolboxes/lab/mcp?api-version=v1"
-    toolbox = EndpointToolbox(project_endpoint="https://project", toolbox_name="lab", mcp_endpoint=endpoint, credential=Credential())
+    toolbox = EndpointToolbox(
+        project_endpoint="https://project", toolbox_name="lab", mcp_endpoint=endpoint, credential=Credential()
+    )
     assert [tool.name for tool in asyncio.run(toolbox.get_tools())] == ["notion-search"]
 
 
@@ -233,15 +272,18 @@ def test_toolbox_catalog_cache_expires_and_never_keeps_a_consent_prompt(monkeypa
 
     async def run():
         load = notion_foundry.toolbox_loader(settings)
-        await load(); await load()
+        await load()
+        await load()
         assert listings == [1]
         monkeypatch.setattr(notion_foundry, "TOOLBOX_CACHE_SECONDS", 0.0)
         load = notion_foundry.toolbox_loader(settings)
         consent[0] = True
-        await load(); await load()
+        await load()
+        await load()
         assert len(listings) == 3  # a consent prompt is listed again every time
         consent[0] = False
-        await load(); await load()
+        await load()
+        await load()
         assert len(listings) == 5  # expired immediately with a zero lifetime
 
     asyncio.run(run())

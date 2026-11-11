@@ -1,18 +1,19 @@
 """Project documents in the BFF: rules, routes and the cited sources, with in-memory fakes. No Azure."""
+
 import asyncio
 import json
 
-from fastapi.testclient import TestClient
 import httpx
 import pytest
+from fastapi.testclient import TestClient
+from test_bff_api import AGENT_URL, OBJECT_ID, OWNER, OWNER_HEADERS, Credential, easy_auth, service  # noqa: F401
+from workspace_fakes import InMemoryStore
 
 from savant import bff_api
 from savant.bff_api import ApiSettings, add_api
-from savant.document_library import DocumentError, DocumentLibrary, MAX_BYTES, clean_name
+from savant.document_library import MAX_BYTES, DocumentError, DocumentLibrary, clean_name
 from savant.oauth_callback import create_callback_app
 from savant.workspace import WorkspaceService
-from test_bff_api import AGENT_URL, OBJECT_ID, OWNER, OWNER_HEADERS, Credential, easy_auth, service  # noqa: F401
-from workspace_fakes import InMemoryStore
 
 
 class FakeFiles:
@@ -20,8 +21,11 @@ class FakeFiles:
         self.blobs, self.log, self.clock = {}, [], 0
 
     async def list(self, prefix):
-        return [{"name": n, "size": len(b["data"]), "last_modified": b["at"]}
-                for n, b in self.blobs.items() if n.startswith(prefix)]
+        return [
+            {"name": n, "size": len(b["data"]), "last_modified": b["at"]}
+            for n, b in self.blobs.items()
+            if n.startswith(prefix)
+        ]
 
     async def upload(self, name, data, content_type, metadata):
         self.clock += 1
@@ -84,16 +88,27 @@ def make(service, store=None):
     lib, files = library()
     workspace = WorkspaceService(store or InMemoryStore())
     app = create_callback_app(service)
-    add_api(app, ApiSettings(OWNER, AGENT_URL, owner_object_id=OBJECT_ID), service, Credential(),
-            httpx.AsyncClient(transport=httpx.MockTransport(lambda r: httpx.Response(500))),
-            workspace=workspace, documents=lib)
+    add_api(
+        app,
+        ApiSettings(OWNER, AGENT_URL, owner_object_id=OBJECT_ID),
+        service,
+        Credential(),
+        httpx.AsyncClient(transport=httpx.MockTransport(lambda r: httpx.Response(500))),
+        workspace=workspace,
+        documents=lib,
+    )
     return TestClient(app), lib, files
 
 
-@pytest.mark.parametrize("raw,expected", [
-    ("Plan.PDF", "Plan.pdf"), ("../../etc/notes.md", "notes.md"), ("C:\\Users\\a\\SDD-003.docx", "SDD-003.docx"),
-    ("ré\u0000sumé.txt", "résumé.txt"),
-])
+@pytest.mark.parametrize(
+    "raw,expected",
+    [
+        ("Plan.PDF", "Plan.pdf"),
+        ("../../etc/notes.md", "notes.md"),
+        ("C:\\Users\\a\\SDD-003.docx", "SDD-003.docx"),
+        ("ré\u0000sumé.txt", "résumé.txt"),
+    ],
+)
 def test_names_are_cleaned(raw, expected):
     assert clean_name(raw) == expected
 
@@ -111,7 +126,7 @@ def test_upload_lists_with_the_real_state_and_stays_in_its_project(service):
     added = client.post("/api/projects/main/documents?name=SDD-003.pdf", headers=h, content=b"%PDF-1.7 voice")
     assert added.status_code == 201 and added.json()["state"] == "indexing" and lib.index.runs == 1
     doc = added.json()["id"]
-    (name, blob), = files.blobs.items()
+    ((name, blob),) = files.blobs.items()
     assert name == f"main/{doc}/SDD-003.pdf" and blob["metadata"] == {"project_id": "main", "document_id": doc}
     assert blob["type"] == "application/pdf"
     assert client.get("/api/projects/main/documents", headers=h).json()[0]["state"] == "indexing"
@@ -133,7 +148,9 @@ def test_a_failed_file_is_shown_as_failed(service):
 
 def test_file_is_served_inline_with_its_type(service):
     client, _, _ = make(service)
-    doc = client.post("/api/projects/main/documents?name=notes été.md", headers=OWNER_HEADERS, content=b"# hi").json()["id"]
+    doc = client.post("/api/projects/main/documents?name=notes été.md", headers=OWNER_HEADERS, content=b"# hi").json()[
+        "id"
+    ]
     response = client.get(f"/api/projects/main/documents/{doc}/file", headers=OWNER_HEADERS)
     assert response.status_code == 200 and response.content == b"# hi"
     assert response.headers["content-type"].startswith("text/markdown")
@@ -211,6 +228,7 @@ def test_a_failing_cleanup_does_not_break_the_list(service):
 
     async def broken(project_id, document_id):
         raise RuntimeError("search is down")
+
     lib.index.delete_document = broken
     listed = client.get("/api/projects/main/documents", headers=OWNER_HEADERS)
     assert listed.status_code == 200 and [d["id"] for d in listed.json()] == [doc]
@@ -230,8 +248,10 @@ def test_deleting_a_project_deletes_its_documents(service):
 def test_limits_and_unknown_projects(service):
     client, _, files = make(service)
     h = OWNER_HEADERS
-    assert client.post("/api/projects/main/documents?name=big.pdf", headers=h,
-                       content=b"x" * (MAX_BYTES + 1)).status_code == 413
+    assert (
+        client.post("/api/projects/main/documents?name=big.pdf", headers=h, content=b"x" * (MAX_BYTES + 1)).status_code
+        == 413
+    )
     assert client.post("/api/projects/main/documents?name=photo.png", headers=h, content=b"x").status_code == 415
     assert client.post("/api/projects/main/documents?name=empty.txt", headers=h, content=b"").status_code == 422
     assert client.post("/api/projects/nope/documents?name=a.txt", headers=h, content=b"x").status_code == 404
@@ -239,23 +259,35 @@ def test_limits_and_unknown_projects(service):
     assert files.blobs == {}
 
 
-@pytest.mark.parametrize("method,path", [
-    ("get", "/api/projects/main/documents"), ("post", "/api/projects/main/documents?name=a.txt"),
-    ("delete", "/api/projects/main/documents/" + "0" * 32), ("get", "/api/projects/main/documents/" + "0" * 32 + "/file"),
-])
+@pytest.mark.parametrize(
+    "method,path",
+    [
+        ("get", "/api/projects/main/documents"),
+        ("post", "/api/projects/main/documents?name=a.txt"),
+        ("delete", "/api/projects/main/documents/" + "0" * 32),
+        ("get", "/api/projects/main/documents/" + "0" * 32 + "/file"),
+    ],
+)
 def test_document_routes_fail_closed(service, method, path):
     client, _, files = make(service)
     kwargs = {"content": b"x"} if method == "post" else {}
     assert getattr(client, method)(path, **kwargs).status_code == 401
-    assert getattr(client, method)(path, headers=easy_auth("11111111-2222-4333-8444-555555555555"),
-                                   **kwargs).status_code == 403
+    assert (
+        getattr(client, method)(path, headers=easy_auth("11111111-2222-4333-8444-555555555555"), **kwargs).status_code
+        == 403
+    )
     assert files.blobs == {}
 
 
 def test_without_documents_configuration_the_routes_do_not_exist(service):
     app = create_callback_app(service)
-    add_api(app, ApiSettings(OWNER, AGENT_URL, owner_object_id=OBJECT_ID), service, Credential(),
-            workspace=WorkspaceService(InMemoryStore()))
+    add_api(
+        app,
+        ApiSettings(OWNER, AGENT_URL, owner_object_id=OBJECT_ID),
+        service,
+        Credential(),
+        workspace=WorkspaceService(InMemoryStore()),
+    )
     assert TestClient(app).get("/api/projects/main/documents", headers=OWNER_HEADERS).status_code == 404
 
 
@@ -280,22 +312,47 @@ def lines(*events):
     async def gen():
         for event in events:
             yield "data: " + json.dumps(event)
+
     return gen()
 
 
 def test_a_document_search_relays_only_the_cited_documents():
     passage = "SECRET passage text"
-    output = ('<untrusted_data source="search_documents">\n' + json.dumps({"results": [
-        {"document_id": "0" * 32, "title": "SDD-003.pdf", "passage": passage},
-        {"document_id": "0" * 32, "title": "SDD-003.pdf", "passage": "again"},
-        {"document_id": "bad id'", "title": "x", "passage": "y"},
-        {"document_id": "test-doc", "title": "savant-test.md", "passage": passage}]}) + "\n</untrusted_data>")
+    output = (
+        '<untrusted_data source="search_documents">\n'
+        + json.dumps(
+            {
+                "results": [
+                    {"document_id": "0" * 32, "title": "SDD-003.pdf", "passage": passage},
+                    {"document_id": "0" * 32, "title": "SDD-003.pdf", "passage": "again"},
+                    {"document_id": "bad id'", "title": "x", "passage": "y"},
+                    {"document_id": "test-doc", "title": "savant-test.md", "passage": passage},
+                ]
+            }
+        )
+        + "\n</untrusted_data>"
+    )
     events = [
-        {"type": "response.output_item.added", "item": {"type": "function_call", "call_id": "c1", "name": "search_documents"}},
-        {"type": "response.output_item.added", "item": {"type": "function_call", "call_id": "c2", "name": "notion-fetch"}},
-        {"type": "response.output_item.done", "item": {"type": "function_call_output", "call_id": "c2", "output": output}},
-        {"type": "response.output_item.added", "item": {"type": "function_call_output", "call_id": "c1", "output": output}},
-        {"type": "response.output_item.done", "item": {"type": "function_call_output", "call_id": "c1", "output": output}},
+        {
+            "type": "response.output_item.added",
+            "item": {"type": "function_call", "call_id": "c1", "name": "search_documents"},
+        },
+        {
+            "type": "response.output_item.added",
+            "item": {"type": "function_call", "call_id": "c2", "name": "notion-fetch"},
+        },
+        {
+            "type": "response.output_item.done",
+            "item": {"type": "function_call_output", "call_id": "c2", "output": output},
+        },
+        {
+            "type": "response.output_item.added",
+            "item": {"type": "function_call_output", "call_id": "c1", "output": output},
+        },
+        {
+            "type": "response.output_item.done",
+            "item": {"type": "function_call_output", "call_id": "c1", "output": output},
+        },
         {"type": "response.completed", "response": {"id": "resp_1"}},
     ]
 
@@ -303,14 +360,23 @@ def test_a_document_search_relays_only_the_cited_documents():
         return [chunk async for chunk in bff_api._relay_events(lines(*events))]
 
     chunks = asyncio.run(run())
-    sources = [json.loads(c[len("data: "):]) for c in chunks if '"sources"' in c]
-    assert sources == [{"type": "sources", "id": "c1", "sources": [
-        {"documentId": "0" * 32, "title": "SDD-003.pdf"}, {"documentId": "test-doc", "title": "savant-test.md"}]}]
+    sources = [json.loads(c[len("data: ") :]) for c in chunks if '"sources"' in c]
+    assert sources == [
+        {
+            "type": "sources",
+            "id": "c1",
+            "sources": [
+                {"documentId": "0" * 32, "title": "SDD-003.pdf"},
+                {"documentId": "test-doc", "title": "savant-test.md"},
+            ],
+        }
+    ]
     assert all(passage not in c for c in chunks)
 
 
 def test_azure_index_deletes_by_filter_tolerates_a_running_indexer_and_reads_failures():
     from savant.document_library import AzureSearchIndex
+
     seen, doc, chunks = [], "a" * 32, ["k1", "k2"]
 
     def provider(request):
@@ -322,9 +388,19 @@ def test_azure_index_deletes_by_filter_tolerates_a_running_indexer_and_reads_fai
         if request.url.path.endswith("/run"):
             return httpx.Response(409)
         if request.url.path.endswith("/status"):
-            return httpx.Response(200, json={"lastResult": {"errors": [{
-                "key": f"localId=https://st.blob.core.windows.net/documents/main/{doc}/mon%20scan.pdf&documentKey=x",
-                "errorMessage": "Could not extract"}]}})
+            return httpx.Response(
+                200,
+                json={
+                    "lastResult": {
+                        "errors": [
+                            {
+                                "key": f"localId=https://st.blob.core.windows.net/documents/main/{doc}/mon%20scan.pdf&documentKey=x",
+                                "errorMessage": "Could not extract",
+                            }
+                        ]
+                    }
+                },
+            )
         return httpx.Response(200, json={})
 
     class Token:
@@ -333,8 +409,13 @@ def test_azure_index_deletes_by_filter_tolerates_a_running_indexer_and_reads_fai
             return type("T", (), {"token": "t"})()
 
     async def run():
-        index = AzureSearchIndex("https://ais-sa2.search.windows.net", "sa2-docs", "sa2-docs-indexer", Token(),
-                                 client=httpx.AsyncClient(transport=httpx.MockTransport(provider)))
+        index = AzureSearchIndex(
+            "https://ais-sa2.search.windows.net",
+            "sa2-docs",
+            "sa2-docs-indexer",
+            Token(),
+            client=httpx.AsyncClient(transport=httpx.MockTransport(provider)),
+        )
         await index.delete_document("main", doc)
         await index.run()
         return await index.failed()
@@ -342,13 +423,15 @@ def test_azure_index_deletes_by_filter_tolerates_a_running_indexer_and_reads_fai
     failed = asyncio.run(run())
     search, delete = seen[0][2], seen[1][2]
     assert search["filter"] == f"project_id eq 'main' and document_id eq '{doc}'"
-    assert delete == {"value": [{"@search.action": "delete", "chunk_id": "k1"},
-                                {"@search.action": "delete", "chunk_id": "k2"}]}
+    assert delete == {
+        "value": [{"@search.action": "delete", "chunk_id": "k1"}, {"@search.action": "delete", "chunk_id": "k2"}]
+    }
     assert failed == {f"main/{doc}/mon scan.pdf"}
 
 
 def test_azure_index_reads_whether_a_run_is_in_progress_and_forgets_hand_made_ids_safely():
     from savant.document_library import AzureSearchIndex
+
     seen, status = [], {"lastResult": {"status": "inProgress"}}
 
     def provider(request):
@@ -364,8 +447,13 @@ def test_azure_index_reads_whether_a_run_is_in_progress_and_forgets_hand_made_id
             return type("T", (), {"token": "t"})()
 
     async def run():
-        index = AzureSearchIndex("https://ais-sa2.search.windows.net", "sa2-docs", "sa2-docs-indexer", Token(),
-                                 client=httpx.AsyncClient(transport=httpx.MockTransport(provider)))
+        index = AzureSearchIndex(
+            "https://ais-sa2.search.windows.net",
+            "sa2-docs",
+            "sa2-docs-indexer",
+            Token(),
+            client=httpx.AsyncClient(transport=httpx.MockTransport(provider)),
+        )
         first = await index.busy()
         status["lastResult"]["status"] = "success"
         second = await index.busy()
@@ -380,6 +468,7 @@ def test_azure_index_reads_whether_a_run_is_in_progress_and_forgets_hand_made_id
 
 def test_azure_index_reads_and_deletes_past_one_page_of_chunks():
     from savant.document_library import AzureSearchIndex
+
     doc, remaining = "a" * 32, [f"k{i}" for i in range(1003)]
     searches, deleted = [], []
 
@@ -387,7 +476,7 @@ def test_azure_index_reads_and_deletes_past_one_page_of_chunks():
         body = json.loads(request.content)
         if request.url.path.endswith("/docs/search"):
             searches.append(body.get("skip", 0))
-            page = remaining[body.get("skip", 0):body.get("skip", 0) + body["top"]]
+            page = remaining[body.get("skip", 0) : body.get("skip", 0) + body["top"]]
             return httpx.Response(200, json={"value": [{"chunk_id": k, "document_id": doc} for k in page]})
         assert len(body["value"]) <= 1000
         for action in body["value"]:
@@ -400,8 +489,13 @@ def test_azure_index_reads_and_deletes_past_one_page_of_chunks():
             return type("T", (), {"token": "t"})()
 
     async def run():
-        index = AzureSearchIndex("https://ais-sa2.search.windows.net", "sa2-docs", "sa2-docs-indexer", Token(),
-                                 client=httpx.AsyncClient(transport=httpx.MockTransport(provider)))
+        index = AzureSearchIndex(
+            "https://ais-sa2.search.windows.net",
+            "sa2-docs",
+            "sa2-docs-indexer",
+            Token(),
+            client=httpx.AsyncClient(transport=httpx.MockTransport(provider)),
+        )
         assert await index.ready("main") == {doc}
         assert searches == [0, 1000]  # a second page was read
         await index.delete_document("main", doc)

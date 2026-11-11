@@ -1,13 +1,23 @@
 """Offline checks of the AI Search pipeline definitions: no credential, no request."""
+
 import pytest
 
-from scripts.search_setup import (CHUNK_CHARS, EXTENSIONS, config_from_env, datasource_definition, definitions,
-                                  index_definition, indexer_definition, main, skillset_definition)
+from scripts.search_setup import (
+    CHUNK_CHARS,
+    EXTENSIONS,
+    config_from_env,
+    datasource_definition,
+    definitions,
+    index_definition,
+    indexer_definition,
+    main,
+    skillset_definition,
+)
 
 ENV = {
     "SEARCH_ENDPOINT": "https://ais-sa2.search.windows.net",
     "SEARCH_STORAGE_RESOURCE_ID": "/subscriptions/s/resourceGroups/rg/providers/Microsoft.Storage/"
-                                  "storageAccounts/stsavantazurian2",
+    "storageAccounts/stsavantazurian2",
     "SEARCH_EMBEDDING_ENDPOINT": "https://fp-savant-azurian-2-resource.services.ai.azure.com/",
     "SEARCH_EMBEDDING_DEPLOYMENT": "text-embedding-3-small",
 }
@@ -57,20 +67,25 @@ def test_the_pipeline_is_wired_by_name_and_keyless():
     names = [body["name"] for _, body in definitions(c)]
     assert names == ["sa2-test", "sa2-test-blob", "sa2-test-skillset", "sa2-test-indexer"]
     indexer = indexer_definition(c)
-    assert (indexer["dataSourceName"], indexer["skillsetName"], indexer["targetIndexName"]) == tuple(names[1:3]) + ("sa2-test",)
+    assert (indexer["dataSourceName"], indexer["skillsetName"], indexer["targetIndexName"]) == tuple(names[1:3]) + (
+        "sa2-test",
+    )
     source = datasource_definition(c)
     assert source["credentials"]["connectionString"].startswith("ResourceId=/subscriptions/")
     assert "AccountKey" not in str(source)
     assert indexer["parameters"]["configuration"]["indexedFileNameExtensions"] == ",".join(EXTENSIONS)
 
 
-@pytest.mark.parametrize("name,value", [
-    ("SEARCH_ENDPOINT", "http://ais-sa2.search.windows.net"),
-    ("SEARCH_STORAGE_RESOURCE_ID", "stsavantazurian2"),
-    ("SEARCH_EMBEDDING_ENDPOINT", "https://westeurope.api.cognitive.microsoft.com"),
-    ("SEARCH_EMBEDDING_DEPLOYMENT", ""),
-    ("SEARCH_EMBEDDING_MODEL", "gpt-6-luna"),
-])
+@pytest.mark.parametrize(
+    "name,value",
+    [
+        ("SEARCH_ENDPOINT", "http://ais-sa2.search.windows.net"),
+        ("SEARCH_STORAGE_RESOURCE_ID", "stsavantazurian2"),
+        ("SEARCH_EMBEDDING_ENDPOINT", "https://westeurope.api.cognitive.microsoft.com"),
+        ("SEARCH_EMBEDDING_DEPLOYMENT", ""),
+        ("SEARCH_EMBEDDING_MODEL", "gpt-6-luna"),
+    ],
+)
 def test_bad_configuration_fails_before_any_request(name, value):
     with pytest.raises(ValueError, match=name):
         cfg(**{name: value})

@@ -1,4 +1,5 @@
 """Compatibility entry point; ownership and release planning live under scripts/."""
+
 import sys
 from pathlib import Path
 
@@ -6,7 +7,8 @@ if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from scripts.component_changes import classify
-from scripts.release_plan import api, changed_since as component_changed_since
+from scripts.release_plan import api
+from scripts.release_plan import changed_since as component_changed_since
 from scripts.release_plan import last_checkpoint as component_checkpoint
 
 
@@ -24,5 +26,6 @@ def last_checkpoint(repository: str, current_run: str, request=api) -> str | Non
 
 if __name__ == "__main__":
     from scripts.release_plan import main
+
     sys.argv = [sys.argv[0], "--component", "bff"]
     main()

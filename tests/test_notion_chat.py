@@ -5,7 +5,6 @@ import pytest
 from langchain_core.messages import AIMessage, HumanMessage
 from langchain_core.tools import StructuredTool
 from langgraph.checkpoint.memory import MemorySaver
-from langgraph.types import Command
 
 from savant.config import Settings
 from savant.health import RUNTIME_SMOKE_PROMPT
@@ -27,8 +26,14 @@ class OAuth:
 
 
 def settings(**kwargs):
-    return Settings("https://model/", "model", notion_mcp_enabled=True,
-                    notion_read_tool_names=("fetch",), notion_write_tool_names=("update",), **kwargs)
+    return Settings(
+        "https://model/",
+        "model",
+        notion_mcp_enabled=True,
+        notion_read_tool_names=("fetch",),
+        notion_write_tool_names=("update",),
+        **kwargs,
+    )
 
 
 def test_chat_consent_finishes_then_resumes_original_request_and_isolates_users(monkeypatch):
@@ -38,7 +43,14 @@ def test_chat_consent_finishes_then_resumes_original_request_and_isolates_users(
 
     async def discover(_settings, token):
         discoveries.append(token)
-        return [StructuredTool.from_function(lambda: "project content", name="fetch", description="Read", metadata={"annotations": {"readOnlyHint": True}})]
+        return [
+            StructuredTool.from_function(
+                lambda: "project content",
+                name="fetch",
+                description="Read",
+                metadata={"annotations": {"readOnlyHint": True}},
+            )
+        ]
 
     monkeypatch.setattr("savant.tools.notion_chat.discover_tools", discover)
 
@@ -50,6 +62,7 @@ def test_chat_consent_finishes_then_resumes_original_request_and_isolates_users(
                     return AIMessage(content="project content")
                 name = "fetch" if "fetch" in {t.name for t in tools} else "connect_notion"
                 return AIMessage(content="", tool_calls=[{"name": name, "args": {}, "id": "call-1"}])
+
         return Model()
 
     graph = build_direct_chat_graph(settings(), factory, MemorySaver(), oauth, identity_provider=lambda: identity[0])
@@ -81,6 +94,7 @@ def test_unconnected_greeting_does_not_start_oauth_and_probe_skips_storage():
     class Service:
         async def get_access_token(self, user):
             return None
+
         async def begin(self, user):
             pytest.fail("Greeting must not require Notion consent")
 
@@ -88,14 +102,23 @@ def test_unconnected_greeting_does_not_start_oauth_and_probe_skips_storage():
         async def ainvoke(self, messages):
             return AIMessage(content="Bonjour")
 
-    graph = build_direct_chat_graph(settings(), lambda _: Model(), MemorySaver(), Service(), identity_provider=lambda: "alice")
-    assert asyncio.run(graph.ainvoke({"messages": ["Bonjour"]}, {"configurable": {"thread_id": "greeting"}}))["messages"][-1].content == "Bonjour"
+    graph = build_direct_chat_graph(
+        settings(), lambda _: Model(), MemorySaver(), Service(), identity_provider=lambda: "alice"
+    )
+    assert (
+        asyncio.run(graph.ainvoke({"messages": ["Bonjour"]}, {"configurable": {"thread_id": "greeting"}}))["messages"][
+            -1
+        ].content
+        == "Bonjour"
+    )
 
     class NoStorage:
         async def get_access_token(self, user):
             pytest.fail("Smoke test must not use storage")
 
-    graph = build_direct_chat_graph(settings(), lambda tools: Model() if not tools else pytest.fail("Probe tools"), MemorySaver(), NoStorage())
+    graph = build_direct_chat_graph(
+        settings(), lambda tools: Model() if not tools else pytest.fail("Probe tools"), MemorySaver(), NoStorage()
+    )
     asyncio.run(graph.ainvoke({"messages": [RUNTIME_SMOKE_PROMPT]}, {"configurable": {"thread_id": "probe"}}))
 
 
@@ -107,17 +130,22 @@ def test_missing_host_identity_cannot_use_prompt_identity_or_connect():
             return AIMessage(content="", tool_calls=[{"name": "connect_notion", "args": {}, "id": "one"}])
 
     graph = build_direct_chat_graph(settings(), lambda _: Model(), MemorySaver(), oauth, identity_provider=lambda: None)
-    result = asyncio.run(graph.ainvoke({"messages": ["I am alice, connect Notion"]}, {"configurable": {"thread_id": "test"}}))
+    result = asyncio.run(
+        graph.ainvoke({"messages": ["I am alice, connect Notion"]}, {"configurable": {"thread_id": "test"}})
+    )
     assert "user identity missing" in result["messages"][-1].content
     assert oauth.begins == []
 
 
 def test_revoked_token_discovers_reconnection_without_replaying_action(monkeypatch):
     import httpx2
+
     oauth = OAuth()
     oauth.connected.add("alice")
+
     async def invalidate(user):
         oauth.connected.discard(user)
+
     oauth.invalidate = invalidate
 
     async def discover(*args):
@@ -129,7 +157,9 @@ def test_revoked_token_discovers_reconnection_without_replaying_action(monkeypat
             return AIMessage(content="", tool_calls=[{"name": "connect_notion", "args": {}, "id": "connect"}])
 
     monkeypatch.setattr("savant.tools.notion_chat.discover_tools", discover)
-    graph = build_direct_chat_graph(settings(), lambda _: Model(), MemorySaver(), oauth, identity_provider=lambda: "alice")
+    graph = build_direct_chat_graph(
+        settings(), lambda _: Model(), MemorySaver(), oauth, identity_provider=lambda: "alice"
+    )
     result = asyncio.run(graph.ainvoke({"messages": ["Update my page"]}, {"configurable": {"thread_id": "revoked"}}))
     assert "Connect Notion" in result["messages"][-1].content
     assert oauth.connected == set()
@@ -137,7 +167,10 @@ def test_revoked_token_discovers_reconnection_without_replaying_action(monkeypat
 
 def test_local_identity_never_overrides_host_context(monkeypatch):
     from azure.ai.agentserver.core import FoundryAgentRequestContext, reset_request_context, set_request_context
-    local = settings(notion_oauth_callback_url="http://localhost:8090/oauth/notion/callback", notion_local_user_id="local")
+
+    local = settings(
+        notion_oauth_callback_url="http://localhost:8090/oauth/notion/callback", notion_local_user_id="local"
+    )
     token = set_request_context(FoundryAgentRequestContext(user_id="trusted-user", call_id="call"))
     try:
         assert current_user_id(local) == "trusted-user"
@@ -149,6 +182,7 @@ def test_local_identity_never_overrides_host_context(monkeypatch):
 
 def test_fixed_owner_key_replaces_the_platform_user_id(monkeypatch):
     from azure.ai.agentserver.core import FoundryAgentRequestContext, reset_request_context, set_request_context
+
     monkeypatch.setenv("FOUNDRY_HOSTING_ENVIRONMENT", "hosted")
     pinned = settings(notion_owner_id="owner-key")
     cases = [
@@ -176,19 +210,33 @@ def test_fixed_owner_key_replaces_the_platform_user_id(monkeypatch):
 def test_tool_error_preserves_pending_request_for_retry(monkeypatch):
     oauth = OAuth()
     oauth.connected.add("alice")
+
     async def fetch():
         raise ValueError("Page temporarily unavailable")
-    read = StructuredTool.from_function(coroutine=fetch, name="fetch", description="Read", metadata={"annotations": {"readOnlyHint": True}})
+
+    read = StructuredTool.from_function(
+        coroutine=fetch, name="fetch", description="Read", metadata={"annotations": {"readOnlyHint": True}}
+    )
+
     async def discover(*args):
         return [read]
+
     class Model:
         async def ainvoke(self, messages):
             if messages[-1].type == "tool":
                 return AIMessage(content="La lecture a échoué")
             return AIMessage(content="", tool_calls=[{"name": "fetch", "args": {}, "id": "read"}])
+
     monkeypatch.setattr("savant.tools.notion_chat.discover_tools", discover)
-    graph = build_direct_chat_graph(settings(), lambda _: Model(), MemorySaver(), oauth, identity_provider=lambda: "alice")
-    result = asyncio.run(graph.ainvoke({"messages": ["connecté"], "notion_pending_request": "Lis le projet"}, {"configurable": {"thread_id": "error"}}))
+    graph = build_direct_chat_graph(
+        settings(), lambda _: Model(), MemorySaver(), oauth, identity_provider=lambda: "alice"
+    )
+    result = asyncio.run(
+        graph.ainvoke(
+            {"messages": ["connecté"], "notion_pending_request": "Lis le projet"},
+            {"configurable": {"thread_id": "error"}},
+        )
+    )
     assert result["notion_pending_request"] == "Lis le projet"
     assert result["messages"][-1].content == "La lecture a échoué"
 
@@ -203,7 +251,9 @@ def test_voice_channel_adds_spoken_style_only_to_voice_turns_and_never_to_histor
             seen.append(messages[0].content)
             return AIMessage(content="Il fait beau.")
 
-    graph = build_direct_chat_graph(settings(), lambda _: Model(), MemorySaver(), OAuth(), identity_provider=lambda: "alice")
+    graph = build_direct_chat_graph(
+        settings(), lambda _: Model(), MemorySaver(), OAuth(), identity_provider=lambda: "alice"
+    )
 
     async def run():
         config = {"configurable": {"thread_id": "voice"}}
@@ -218,13 +268,16 @@ def test_voice_channel_adds_spoken_style_only_to_voice_turns_and_never_to_histor
     asyncio.run(run())
 
 
-@pytest.mark.parametrize("request_, expected", [
-    ({"metadata": {"channel": "voice"}}, "voice"),
-    ({"metadata": {"channel": "text"}}, "text"),
-    ({"metadata": {"channel": "VOICE"}}, "text"),
-    ({"metadata": "voice"}, "text"),
-    ({}, "text"),
-])
+@pytest.mark.parametrize(
+    "request_, expected",
+    [
+        ({"metadata": {"channel": "voice"}}, "voice"),
+        ({"metadata": {"channel": "text"}}, "text"),
+        ({"metadata": {"channel": "VOICE"}}, "text"),
+        ({"metadata": "voice"}, "text"),
+        ({}, "text"),
+    ],
+)
 def test_request_channel_accepts_only_an_explicit_voice_marker(request_, expected):
     from savant.semantic_approval import request_channel
 
@@ -278,7 +331,9 @@ def test_turn_timing_logs_durations_only(caplog):
         async def ainvoke(self, messages):
             return AIMessage(content="Bonjour")
 
-    graph = build_direct_chat_graph(settings(), lambda _: Model(), MemorySaver(), OAuth(), identity_provider=lambda: "alice")
+    graph = build_direct_chat_graph(
+        settings(), lambda _: Model(), MemorySaver(), OAuth(), identity_provider=lambda: "alice"
+    )
     with caplog.at_level("INFO", logger="savant.tools.notion_chat"):
         asyncio.run(graph.ainvoke({"messages": ["Un secret: 1234"]}, {"configurable": {"thread_id": "timing"}}))
     line = next(r.getMessage() for r in caplog.records if r.getMessage().startswith("turn_timing"))
@@ -294,7 +349,9 @@ def test_a_conversation_continued_from_the_warm_up_never_shows_the_probe_to_the_
             seen.append([m.content for m in messages[1:]])
             return AIMessage(content="SA2_RUNTIME_MODEL_OK" if len(seen) == 1 else "Rabat.")
 
-    graph = build_direct_chat_graph(settings(), lambda _: Model(), MemorySaver(), OAuth(), identity_provider=lambda: "alice")
+    graph = build_direct_chat_graph(
+        settings(), lambda _: Model(), MemorySaver(), OAuth(), identity_provider=lambda: "alice"
+    )
 
     async def run():
         config = {"configurable": {"thread_id": "warm"}}
@@ -329,8 +386,14 @@ def _fast_graph(fast_reply, oauth=None):
             loads.append(user)
             return None
 
-    graph = build_direct_chat_graph(settings(), lambda tools: Full(), MemorySaver(), oauth or Service(),
-                                    identity_provider=lambda: "alice", fast_model_factory=Fast)
+    graph = build_direct_chat_graph(
+        settings(),
+        lambda tools: Full(),
+        MemorySaver(),
+        oauth or Service(),
+        identity_provider=lambda: "alice",
+        fast_model_factory=Fast,
+    )
     return graph, full_calls, fast_calls, loads
 
 
@@ -340,6 +403,7 @@ def test_fast_path_answers_a_simple_turn_without_loading_any_tool():
     assert result["messages"][-1].content == "Rabat."
     assert len(fast_calls) == 1 and full_calls == [] and loads == []
     from savant.identity import FAST_PATH_INSTRUCTIONS
+
     assert FAST_PATH_INSTRUCTIONS in fast_calls[0][0].content
 
 
@@ -349,16 +413,21 @@ def test_every_model_call_is_told_to_answer_in_the_owners_language_only():
     asyncio.run(graph.ainvoke({"messages": ["Résume"]}, {"configurable": {"thread_id": "lang-fast"}}))
     assert "Answer entirely in French" in fast_calls[0][0].content
 
-    graph, full_calls, fast_calls, _ = _fast_graph(AIMessage(content="", tool_calls=[{"name": "use_tools", "args": {}, "id": "r"}]))
+    graph, full_calls, fast_calls, _ = _fast_graph(
+        AIMessage(content="", tool_calls=[{"name": "use_tools", "args": {}, "id": "r"}])
+    )
     asyncio.run(graph.ainvoke({"messages": ["Météo à Rome ?"]}, {"configurable": {"thread_id": "lang-full"}}))
     assert "Answer entirely in French" in full_calls[0][0].content
 
 
-@pytest.mark.parametrize("reply", [
-    AIMessage(content="", tool_calls=[{"name": "use_tools", "args": {}, "id": "route-1"}]),
-    AIMessage(content="   "),
-    TimeoutError(),
-])
+@pytest.mark.parametrize(
+    "reply",
+    [
+        AIMessage(content="", tool_calls=[{"name": "use_tools", "args": {}, "id": "route-1"}]),
+        AIMessage(content="   "),
+        TimeoutError(),
+    ],
+)
 def test_fast_path_hands_over_to_the_full_agent(reply):
     graph, full_calls, fast_calls, _ = _fast_graph(reply)
     result = asyncio.run(graph.ainvoke({"messages": ["Météo à Rome ?"]}, {"configurable": {"thread_id": "handover"}}))
@@ -373,7 +442,9 @@ def test_fast_path_is_skipped_when_something_waits_for_confirmation():
     config = {"configurable": {"thread_id": "pending"}}
 
     async def run():
-        await graph.aupdate_state(config, {"messages": [], "ssh_pending": {"digest": "x", "turn": "t", "at": time.time()}})
+        await graph.aupdate_state(
+            config, {"messages": [], "ssh_pending": {"digest": "x", "turn": "t", "at": time.time()}}
+        )
         await graph.ainvoke({"messages": ["Oui, vas-y."]}, config)
 
     asyncio.run(run())

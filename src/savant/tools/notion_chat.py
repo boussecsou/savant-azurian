@@ -1,4 +1,5 @@
 """Direct Notion MCP: detached OAuth and durable conversational write approval."""
+
 from __future__ import annotations
 
 import asyncio
@@ -17,9 +18,9 @@ from fastmcp.client.auth import BearerAuth
 from langchain.mcp import as_langchain_tool
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 from langchain_core.tools import StructuredTool
+from langgraph.errors import GraphBubbleUp
 from langgraph.graph import END, MessagesState, StateGraph
 from langgraph.prebuilt import ToolNode
-from langgraph.errors import GraphBubbleUp
 
 from .. import documents, reliability, spotlight
 from ..confirmations import NOTION_ID, confirmation_text, generic_confirmation, result_text, say
@@ -29,12 +30,15 @@ from ..identity import BASE_IDENTITY, FAST_PATH_INSTRUCTIONS, VOICE_STYLE, curre
 from ..language import clean_label, detect_language, language_note
 from ..semantic_approval import approved_arguments, user_text
 from ..semantic_ledger import ApprovalLedger, operation_digest
-from . import DEFAULT_TOOLS
-from . import ssh
-from . import toolbox_policy
+from . import DEFAULT_TOOLS, ssh, toolbox_policy
+from .notion_policy import (
+    NOTION_PRODUCTIVITY_INSTRUCTIONS,
+    catalog_tools,
+    may_execute_without_approval,
+    protected_tool_names,
+    tool_fingerprint,
+)
 from .ssh_skill import SSH_INSTRUCTIONS
-from .notion_policy import (NOTION_PRODUCTIVITY_INSTRUCTIONS, catalog_tools,
-                            may_execute_without_approval, protected_tool_names, tool_fingerprint)
 
 logger = logging.getLogger(__name__)
 # Optional fields of the Notion MCP schema that only describe the caller ("for tracking only").
@@ -60,15 +64,18 @@ async def use_tools() -> str:
     return "handed over"
 
 
-USE_TOOLS = StructuredTool.from_function(coroutine=use_tools, name="use_tools",
-                                         description=use_tools.__doc__)
+USE_TOOLS = StructuredTool.from_function(coroutine=use_tools, name="use_tools", description=use_tools.__doc__)
 FAST_PATH_TIMEOUT_SECONDS = 15.0
 
 
 def _fast_path_allowed(state, rounds) -> bool:
     """Only a fresh turn with nothing pending: a confirmation always goes to the full agent."""
-    return (rounds == 0 and not ssh.pending_live(state.get("ssh_pending")) and not state.get("notion_pending_actions")
-            and not state.get("notion_pending_request"))
+    return (
+        rounds == 0
+        and not ssh.pending_live(state.get("ssh_pending"))
+        and not state.get("notion_pending_actions")
+        and not state.get("notion_pending_request")
+    )
 
 
 def _has_text(message) -> bool:
@@ -84,18 +91,26 @@ def _without_warmup(messages):
     The PWA continues the warm-up conversation to reuse its already started Foundry session;
     the probe ("Do not call any tools") must never reach the model as if the owner had said it.
     """
-    if (len(messages) > 2 and messages[0].type == "human" and messages[0].content == RUNTIME_SMOKE_PROMPT
-            and messages[1].type == "ai"):
+    if (
+        len(messages) > 2
+        and messages[0].type == "human"
+        and messages[0].content == RUNTIME_SMOKE_PROMPT
+        and messages[1].type == "ai"
+    ):
         return messages[2:]
     return messages
 
 
 SET_ASIDE_NOTES = {
-    "declined": ("\nThe owner declined the operation that was waiting for confirmation: it was cancelled and "
-                 "nothing was run. Acknowledge it briefly, then answer anything else their latest message asks."),
-    "not_approved": ("\nThe owner's latest message did not approve the operation that was waiting for "
-                     "confirmation: it was set aside and nothing was run. Answer their latest message. If they "
-                     "still want that operation, call its tool again; the server will ask them again."),
+    "declined": (
+        "\nThe owner declined the operation that was waiting for confirmation: it was cancelled and "
+        "nothing was run. Acknowledge it briefly, then answer anything else their latest message asks."
+    ),
+    "not_approved": (
+        "\nThe owner's latest message did not approve the operation that was waiting for "
+        "confirmation: it was set aside and nothing was run. Answer their latest message. If they "
+        "still want that operation, call its tool again; the server will ask them again."
+    ),
 }
 
 
@@ -142,9 +157,10 @@ def current_user_id(settings):
     Only callers the Entra-protected endpoint already let in reach this code;
     in the cloud the per-request platform call identity must still be present.
     """
-    from azure.ai.agentserver.core import get_request_context
     import os
     from urllib.parse import urlparse
+
+    from azure.ai.agentserver.core import get_request_context
 
     context = get_request_context()
     user = context.user_id
@@ -235,13 +251,23 @@ def _resume_requested(messages):
     if not isinstance(latest, str):
         return False
     normalized = "".join(c for c in unicodedata.normalize("NFD", latest.lower()) if not unicodedata.combining(c))
-    return normalized.strip(" .!\n") in {"connecte", "c'est connecte", "connected", "continue", "connecte, continue", "c'est connecte, continue"}
+    return normalized.strip(" .!\n") in {
+        "connecte",
+        "c'est connecte",
+        "connected",
+        "continue",
+        "connecte, continue",
+        "c'est connecte, continue",
+    }
 
 
 def _safe_operation(operation):
     """Never persist/display credential-like arguments in an approval request."""
     encoded = json.dumps(operation, ensure_ascii=False, allow_nan=False)
-    return not re.search(r'(?i)(access_token|refresh_token|client_secret|authorization|cookie|encryption_key|[?&](?:code|state)=|bearer\s|(?:secret_|ntn_)[A-Za-z0-9]{12,}|eyJ[A-Za-z0-9_-]{8,}\.)', encoded)
+    return not re.search(
+        r"(?i)(access_token|refresh_token|client_secret|authorization|cookie|encryption_key|[?&](?:code|state)=|bearer\s|(?:secret_|ntn_)[A-Za-z0-9]{12,}|eyJ[A-Za-z0-9_-]{8,}\.)",
+        encoded,
+    )
 
 
 def _question(record, remaining):
@@ -311,22 +337,39 @@ def _presentable(operation):
     if name in {"notion-delete-pages", "notion-delete-databases"}:
         field = "page_ids" if name == "notion-delete-pages" else "database_ids"
         ids = args.get(field)
-        return set(args) <= {field, "user_confirmed", "instructions_version"} and isinstance(ids, list) and 0 < len(ids) <= 20 and all(
-            isinstance(value, str) and _NOTION_ID.fullmatch(value) for value in ids)
+        return (
+            set(args) <= {field, "user_confirmed", "instructions_version"}
+            and isinstance(ids, list)
+            and 0 < len(ids) <= 20
+            and all(isinstance(value, str) and _NOTION_ID.fullmatch(value) for value in ids)
+        )
     if name == "notion-update-page" and args.get("command") == "update_content":
         updates = args.get("content_updates")
         page = args.get("page_id")
-        return (isinstance(page, str) and _NOTION_ID.fullmatch(page) is not None
+        return (
+            isinstance(page, str)
+            and _NOTION_ID.fullmatch(page) is not None
             and set(args) <= {"page_id", "command", "content_updates", "allow_async", "instructions_version"}
-            and isinstance(updates, list) and bool(updates) and all(
-            isinstance(item, dict) and isinstance(item.get("old_str"), str)
-            and isinstance(item.get("new_str"), str) and set(item) <= {"old_str", "new_str", "replace_all_matches"}
-            for item in updates) and sum(len(item["old_str"]) + len(item["new_str"]) for item in updates) <= 300)
+            and isinstance(updates, list)
+            and bool(updates)
+            and all(
+                isinstance(item, dict)
+                and isinstance(item.get("old_str"), str)
+                and isinstance(item.get("new_str"), str)
+                and set(item) <= {"old_str", "new_str", "replace_all_matches"}
+                for item in updates
+            )
+            and sum(len(item["old_str"]) + len(item["new_str"]) for item in updates) <= 300
+        )
     if name == "notion-update-page" and args.get("command") == "replace_content":
         page = args.get("page_id")
-        return (isinstance(page, str) and _NOTION_ID.fullmatch(page) is not None
-                and set(args) <= {"page_id", "command", "new_str", "allow_async", "instructions_version"}
-                and isinstance(args.get("new_str"), str) and len(args["new_str"]) <= 300)
+        return (
+            isinstance(page, str)
+            and _NOTION_ID.fullmatch(page) is not None
+            and set(args) <= {"page_id", "command", "new_str", "allow_async", "instructions_version"}
+            and isinstance(args.get("new_str"), str)
+            and len(args["new_str"]) <= 300
+        )
     return len(json.dumps(args, ensure_ascii=False, sort_keys=True)) <= 300
 
 
@@ -334,8 +377,21 @@ def _notice(code, message):
     return AIMessage(content=json.dumps({"code": code, "message": message, "retryable": False}, ensure_ascii=False))
 
 
-def build_direct_chat_graph(settings, model_factory, checkpointer, oauth, *, identity_provider=None, load_toolbox=None, ledger=None, guardrail=None, ssh_runner=None, ssh_judge=None,
-                            fast_model_factory=None, document_search=None):
+def build_direct_chat_graph(
+    settings,
+    model_factory,
+    checkpointer,
+    oauth,
+    *,
+    identity_provider=None,
+    load_toolbox=None,
+    ledger=None,
+    guardrail=None,
+    ssh_runner=None,
+    ssh_judge=None,
+    fast_model_factory=None,
+    document_search=None,
+):
     """Use ordinary END turns, not native interrupts, for text confirmations.
 
     Only the entry node may authorize an existing action. Model output and tool
@@ -351,9 +407,12 @@ def build_direct_chat_graph(settings, model_factory, checkpointer, oauth, *, ide
     async def evaluate(record, text, remaining):
         if guardrail is None:
             return "CLARIFY"
-        return await guardrail.evaluate(operation=record["operation"],
-            proposal=_question(record, remaining).content, user_message=text,
-            context={"pending_count": remaining, "scope": "current operation only"})
+        return await guardrail.evaluate(
+            operation=record["operation"],
+            proposal=_question(record, remaining).content,
+            user_message=text,
+            context={"pending_count": remaining, "scope": "current operation only"},
+        )
 
     toolbox_state = {"error": None, "until": 0.0}
     background = set()
@@ -420,9 +479,13 @@ def build_direct_chat_graph(settings, model_factory, checkpointer, oauth, *, ide
                 # An optional toolbox must not take the whole chat down (Notion, SSH): carry on without it
                 # and say so to the model. Only the error type and an HTTP status are logged.
                 toolbox_tools, platform_protected, toolbox_failed = [], (), True
-                logger.warning("toolbox_unavailable error_type=%s status=%s code=%s detail=%s", type(error).__name__,
-                               getattr(getattr(error, "response", None), "status_code", None),
-                               _error_code(error), _redacted(error))
+                logger.warning(
+                    "toolbox_unavailable error_type=%s status=%s code=%s detail=%s",
+                    type(error).__name__,
+                    getattr(getattr(error, "response", None), "status_code", None),
+                    _error_code(error),
+                    _redacted(error),
+                )
             # The text gate decides per call (toolbox_policy): known reads run freely, everything
             # else, including any unrecognised tool, is protected. `call_tool` is judged by the tool
             # it dispatches to, never by its own name.
@@ -432,8 +495,9 @@ def build_direct_chat_graph(settings, model_factory, checkpointer, oauth, *, ide
         if token:
             try:
                 notion_started = time.perf_counter()
-                notion_tools = await asyncio.wait_for(discover_tools(settings, token),
-                                                      reliability.LOADER_TIMEOUT_SECONDS)
+                notion_tools = await asyncio.wait_for(
+                    discover_tools(settings, token), reliability.LOADER_TIMEOUT_SECONDS
+                )
                 if timings is not None:
                     timings["notion_ms"] = round((time.perf_counter() - notion_started) * 1000)
                 tools.extend(notion_tools)
@@ -447,10 +511,20 @@ def build_direct_chat_graph(settings, model_factory, checkpointer, oauth, *, ide
                 await oauth.invalidate(user)
                 token = None
         if not token:
+
             async def connect_notion():
                 """Connect Notion before using its tools."""
-                return await oauth.begin(user) if user else "Notion unavailable: user identity missing from the request."
-            tools.append(StructuredTool.from_function(coroutine=connect_notion, name="connect_notion", description="Connect Notion when a requested task requires it. Returns a personal consent link; no Notion access before consent."))
+                return (
+                    await oauth.begin(user) if user else "Notion unavailable: user identity missing from the request."
+                )
+
+            tools.append(
+                StructuredTool.from_function(
+                    coroutine=connect_notion,
+                    name="connect_notion",
+                    description="Connect Notion when a requested task requires it. Returns a personal consent link; no Notion access before consent.",
+                )
+            )
         catalog_tools(tools)
         return tools, protected, bool(token), notion_names, toolbox_names, toolbox_failed
 
@@ -464,9 +538,17 @@ def build_direct_chat_graph(settings, model_factory, checkpointer, oauth, *, ide
         user = identity_provider()
         thread = config.get("configurable", {}).get("thread_id", "")
         if not user or not thread:
-            return {"messages": [_notice("identity_required", "Notion unavailable: user identity missing or owner not authorized.")], "approval_stop": True}
+            return {
+                "messages": [
+                    _notice("identity_required", "Notion unavailable: user identity missing or owner not authorized.")
+                ],
+                "approval_stop": True,
+            }
         if ledger is not None and not await ledger.bind_thread(user, thread):
-            return {"messages": [_notice("identity_mismatch", "This conversation belongs to another owner.")], "approval_stop": True}
+            return {
+                "messages": [_notice("identity_mismatch", "This conversation belongs to another owner.")],
+                "approval_stop": True,
+            }
         turn = state.get("approval_user_turn")
         if turn is None:
             # Local graph API only. Production host always supplies an envelope
@@ -487,29 +569,49 @@ def build_direct_chat_graph(settings, model_factory, checkpointer, oauth, *, ide
             previous_id = turn.get("previous_response_id")
             if presented and (not previous_id or previous_id == presented["response_id"]):
                 previous = await ledger.get(user, thread, presented["action_id"])
-                if previous and (previous["status"] == "pending" or
-                                 await evaluate(previous, turn.get("text"), 0) != "CLARIFY"):
-                    return {"approval_stop": True, "approval_last_turn": turn_id,
-                            "messages": [_notice("no_pending_approval", "No confirmable operation in this turn; nothing was run.")]}
+                if previous and (
+                    previous["status"] == "pending" or await evaluate(previous, turn.get("text"), 0) != "CLARIFY"
+                ):
+                    return {
+                        "approval_stop": True,
+                        "approval_last_turn": turn_id,
+                        "messages": [
+                            _notice("no_pending_approval", "No confirmable operation in this turn; nothing was run.")
+                        ],
+                    }
             return {"approval_stop": False, "approval_last_turn": turn_id}
         blocked = {"approval_stop": True}
         if ledger is None or not turn_id or turn_id == state.get("approval_last_turn"):
-            return {**blocked, "messages": [_notice("confirmation_required", "A new explicit user message is required.")]}
+            return {
+                **blocked,
+                "messages": [_notice("confirmation_required", "A new explicit user message is required.")],
+            }
         record = await ledger.get(user, thread, pending[0])
         if not record or record["status"] != "pending":
-            return {**blocked, "notion_pending_actions": [], "approval_last_turn": turn_id,
-                    "messages": [_notice("approval_unavailable", "Authorization expired, already used or outcome uncertain. Nothing was repeated; check the remote state.")]}
+            return {
+                **blocked,
+                "notion_pending_actions": [],
+                "approval_last_turn": turn_id,
+                "messages": [
+                    _notice(
+                        "approval_unavailable",
+                        "Authorization expired, already used or outcome uncertain. Nothing was repeated; check the remote state.",
+                    )
+                ],
+            }
         presented = await ledger.presentation(user, thread)
         # Trust the server's durable presentation, never inferred dialogue or
         # an action identifier supplied by the classifier/user. An explicitly
         # stale response link is blocked even if the semantic verdict is yes.
-        linked = (presented is not None and
-                  presented["action_id"] == record["action_id"] and
-                  presented["response_id"] == state.get("approval_presentation") and
-                  (not turn.get("previous_response_id") or
-                   turn["previous_response_id"] == presented["response_id"]))
-        trusted_transport = (turn.get("source") != "responses" or
-                             bool(turn.get("previous_response_id") or turn.get("conversation")))
+        linked = (
+            presented is not None
+            and presented["action_id"] == record["action_id"]
+            and presented["response_id"] == state.get("approval_presentation")
+            and (not turn.get("previous_response_id") or turn["previous_response_id"] == presented["response_id"])
+        )
+        trusted_transport = turn.get("source") != "responses" or bool(
+            turn.get("previous_response_id") or turn.get("conversation")
+        )
         text = turn.get("text")
         # Only a real owner message, answering the presented question, is judged. Anything else (a
         # stale link, an untrusted transport, no text, no judge) keeps the operation waiting.
@@ -517,14 +619,26 @@ def build_direct_chat_graph(settings, model_factory, checkpointer, oauth, *, ide
         decision = await evaluate(record, text, len(pending)) if judged else "CLARIFY"
         # The language of the request that created the operation, not of a bare "yes" or a button's text.
         lang = record["operation"].get("lang") or detect_language(turn.get("text"))
-        logger.info("approval_decision correlation=%s decision=%s linked=%s trusted=%s",
-                    correlation_id(turn_id), decision, linked, trusted_transport)
+        logger.info(
+            "approval_decision correlation=%s decision=%s linked=%s trusted=%s",
+            correlation_id(turn_id),
+            decision,
+            linked,
+            trusted_transport,
+        )
         if decision != "APPROVE" and not judged:
             if not await ledger.present(user, thread, record["action_id"], turn_id):
-                return {**blocked, "approval_last_turn": turn_id,
-                        "messages": [_notice("approval_conflict", "Another proposal is pending; clarify its scope first.")]}
-            return {**blocked, "approval_last_turn": turn_id, "approval_presentation": turn_id,
-                    "messages": [_question(record, len(pending))]}
+                return {
+                    **blocked,
+                    "approval_last_turn": turn_id,
+                    "messages": [_notice("approval_conflict", "Another proposal is pending; clarify its scope first.")],
+                }
+            return {
+                **blocked,
+                "approval_last_turn": turn_id,
+                "approval_presentation": turn_id,
+                "messages": [_question(record, len(pending))],
+            }
         if decision != "APPROVE":
             # The owner's own answer, and not a yes: the waiting operation is set aside (nothing runs) and the message goes to the
             # model like any other, so the owner can refuse, ask a question or change the subject
@@ -532,23 +646,49 @@ def build_direct_chat_graph(settings, model_factory, checkpointer, oauth, *, ide
             # worded and judged again by the server.
             for action in pending:
                 await ledger.reject(user, thread, action)
-            return {"approval_stop": False, "notion_pending_actions": [], "approval_last_turn": turn_id,
-                    "approval_set_aside": "declined" if decision == "REJECT" else "not_approved"}
+            return {
+                "approval_stop": False,
+                "notion_pending_actions": [],
+                "approval_last_turn": turn_id,
+                "approval_set_aside": "declined" if decision == "REJECT" else "not_approved",
+            }
         # Refresh account access and tool schema before claiming. No fallback,
         # changed parameters or fresh model interpretation can inherit consent.
         try:
             tools, _, _, _, _, _ = await load_tools()
             tool = catalog_tools(tools).get(record["operation"]["name"])
         except Exception:
-            return {**blocked, "approval_last_turn": turn_id, "messages": [_notice("tools_unavailable", "Tool catalog unavailable; nothing was written.")]}
+            return {
+                **blocked,
+                "approval_last_turn": turn_id,
+                "messages": [_notice("tools_unavailable", "Tool catalog unavailable; nothing was written.")],
+            }
         operation = record["operation"]
-        if tool is None or tool_fingerprint(tool) != operation["fingerprint"] or operation_digest(operation) != record["digest"]:
+        if (
+            tool is None
+            or tool_fingerprint(tool) != operation["fingerprint"]
+            or operation_digest(operation) != record["digest"]
+        ):
             for action in pending:
                 await ledger.reject(user, thread, action)
-            return {**blocked, "notion_pending_actions": [], "messages": [_notice("operation_changed", "Tool missing or schema changed; a new proposal is needed.")]}
-        if not await ledger.claim(user, thread, record["action_id"], record["digest"], message_id=turn_id,
-                                  presentation_id=presented["response_id"]):
-            return {**blocked, "notion_pending_actions": [], "messages": [_notice("approval_consumed", "Authorization already used; nothing was repeated.")]}
+            return {
+                **blocked,
+                "notion_pending_actions": [],
+                "messages": [_notice("operation_changed", "Tool missing or schema changed; a new proposal is needed.")],
+            }
+        if not await ledger.claim(
+            user,
+            thread,
+            record["action_id"],
+            record["digest"],
+            message_id=turn_id,
+            presentation_id=presented["response_id"],
+        ):
+            return {
+                **blocked,
+                "notion_pending_actions": [],
+                "messages": [_notice("approval_consumed", "Authorization already used; nothing was repeated.")],
+            }
         call = {"name": operation["name"], "args": operation["args"], "id": record["action_id"], "type": "tool_call"}
         try:
             result = await tool.ainvoke(call, config)
@@ -559,8 +699,17 @@ def build_direct_chat_graph(settings, model_factory, checkpointer, oauth, *, ide
             # Do not continue a batch when the outcome of an operation is unknown.
             for action in pending[1:]:
                 await ledger.reject(user, thread, action)
-            return {**blocked, "notion_pending_actions": [], "approval_last_turn": turn_id,
-                    "messages": [_notice("write_result_unknown", "Uncertain result. Nothing is repeated automatically; check the remote state before any new request.")]}
+            return {
+                **blocked,
+                "notion_pending_actions": [],
+                "approval_last_turn": turn_id,
+                "messages": [
+                    _notice(
+                        "write_result_unknown",
+                        "Uncertain result. Nothing is repeated automatically; check the remote state before any new request.",
+                    )
+                ],
+            }
         remaining = pending[1:]
         if failed:
             for action in remaining:
@@ -568,8 +717,10 @@ def build_direct_chat_graph(settings, model_factory, checkpointer, oauth, *, ide
             remaining = []
         # Tool output remains data, never a new instruction or confirmation.
         # A fresh model call is intentionally not made after a protected write.
-        answer = AIMessage(content=result_text(operation, lang, failed),
-                           additional_kwargs={"savant_status": "tool_error" if failed else "tool_returned"})
+        answer = AIMessage(
+            content=result_text(operation, lang, failed),
+            additional_kwargs={"savant_status": "tool_error" if failed else "tool_returned"},
+        )
         output = [answer]
         if remaining:
             next_record = await ledger.get(user, thread, remaining[0])
@@ -581,13 +732,23 @@ def build_direct_chat_graph(settings, model_factory, checkpointer, oauth, *, ide
                     output.append(_notice("approval_conflict", "Competing proposals; clarification needed."))
             else:
                 remaining = []
-        return {**blocked, "notion_pending_actions": remaining, "approval_last_turn": turn_id, "approval_presentation": turn_id, "messages": output}
+        return {
+            **blocked,
+            "notion_pending_actions": remaining,
+            "approval_last_turn": turn_id,
+            "approval_presentation": turn_id,
+            "messages": output,
+        }
 
     async def call_model(state):
         messages = state["messages"]
         if is_runtime_probe(messages):
             warm_toolbox()
-            return {"messages": [await model_factory(()).ainvoke([SystemMessage(content=BASE_IDENTITY + _style(state)), *messages])]}
+            return {
+                "messages": [
+                    await model_factory(()).ainvoke([SystemMessage(content=BASE_IDENTITY + _style(state)), *messages])
+                ]
+            }
         messages = _without_warmup(messages)
         correlation = correlation_id(state.get("approval_last_turn"))
         rounds = reliability.tool_rounds_this_turn(messages)
@@ -602,9 +763,20 @@ def build_direct_chat_graph(settings, model_factory, checkpointer, oauth, *, ide
             try:
                 routed = await asyncio.wait_for(
                     fast_model_factory((USE_TOOLS,)).ainvoke(
-                        [SystemMessage(content=BASE_IDENTITY + FAST_PATH_INSTRUCTIONS + _language(messages) + clock
-                                       + _set_aside(state) + _style(state)), *messages]),
-                    FAST_PATH_TIMEOUT_SECONDS)
+                        [
+                            SystemMessage(
+                                content=BASE_IDENTITY
+                                + FAST_PATH_INSTRUCTIONS
+                                + _language(messages)
+                                + clock
+                                + _set_aside(state)
+                                + _style(state)
+                            ),
+                            *messages,
+                        ]
+                    ),
+                    FAST_PATH_TIMEOUT_SECONDS,
+                )
             except Exception as error:
                 routed = None
                 logger.warning("fast_path_failed correlation=%s error_type=%s", correlation, type(error).__name__)
@@ -620,25 +792,45 @@ def build_direct_chat_graph(settings, model_factory, checkpointer, oauth, *, ide
             tools, _, connected, _, _, toolbox_failed = await load_tools(timings, state.get("project_id"))
             timings["load_ms"] = round((time.perf_counter() - load_started) * 1000)
         except Exception as error:
-            logger.warning("turn_end correlation=%s outcome=tools_unavailable error_type=%s", correlation, type(error).__name__)
+            logger.warning(
+                "turn_end correlation=%s outcome=tools_unavailable error_type=%s", correlation, type(error).__name__
+            )
             return {"messages": [_notice("tools_unavailable", "Tools unavailable; no result to report.")]}
         # Stable instructions first (the language line only changes with the owner's language), then the
         # clock and per-turn parts (voice style, notices) last, so consecutive
         # turns share a long identical prefix that Azure OpenAI can serve from its prompt cache.
         searchable = any(tool.name == documents.TOOL_NAME for tool in tools)
-        context = (BASE_IDENTITY + "\n" + NOTION_PRODUCTIVITY_INSTRUCTIONS + (SSH_INSTRUCTIONS if ssh_tools else "")
-                   + (documents.INSTRUCTIONS if searchable else "")
-                   + ("\n" + toolbox_policy.OUTLOOK_INSTRUCTIONS if load_toolbox is not None and not toolbox_failed else "")
-                   + ("\nThe toolbox (Outlook, web search, code interpreter) is unavailable for this request: "
-                      "if the owner asks for one of them, say it is unavailable right now. Never invent results."
-                      if toolbox_failed else "")
-                   + _language(messages) + clock + _set_aside(state) + _style(state))
+        context = (
+            BASE_IDENTITY
+            + "\n"
+            + NOTION_PRODUCTIVITY_INSTRUCTIONS
+            + (SSH_INSTRUCTIONS if ssh_tools else "")
+            + (documents.INSTRUCTIONS if searchable else "")
+            + ("\n" + toolbox_policy.OUTLOOK_INSTRUCTIONS if load_toolbox is not None and not toolbox_failed else "")
+            + (
+                "\nThe toolbox (Outlook, web search, code interpreter) is unavailable for this request: "
+                "if the owner asks for one of them, say it is unavailable right now. Never invent results."
+                if toolbox_failed
+                else ""
+            )
+            + _language(messages)
+            + clock
+            + _set_aside(state)
+            + _style(state)
+        )
         if rounds >= reliability.MAX_TOOL_ROUNDS:
             logger.warning("turn_end correlation=%s outcome=loop_guard rounds=%d", correlation, rounds)
             # Bounded turn: never loop on tools. The owner decides whether to continue.
-            return {"messages": [AIMessage(content=(
-                f"I stopped after {reliability.MAX_TOOL_ROUNDS} tool steps without reaching an answer. "
-                "Tell me how to narrow the request, or say \"continue\" to let me go on."))]}
+            return {
+                "messages": [
+                    AIMessage(
+                        content=(
+                            f"I stopped after {reliability.MAX_TOOL_ROUNDS} tool steps without reaching an answer. "
+                            'Tell me how to narrow the request, or say "continue" to let me go on.'
+                        )
+                    )
+                ]
+            }
         pending = state.get("notion_pending_request", "")
         if pending and _resume_requested(messages):
             if not connected:
@@ -649,15 +841,23 @@ def build_direct_chat_graph(settings, model_factory, checkpointer, oauth, *, ide
         response = await model_factory(tools).ainvoke([SystemMessage(content=context), *messages])
         timings["model_ms"] = round((time.perf_counter() - model_started) * 1000)
         # Durations only (no content): where a slow turn spends its time.
-        logger.info("turn_timing correlation=%s round=%d %s", correlation, rounds + 1,
-                    " ".join(f"{key}={value}" for key, value in sorted(timings.items())))
+        logger.info(
+            "turn_timing correlation=%s round=%d %s",
+            correlation,
+            rounds + 1,
+            " ".join(f"{key}={value}" for key, value in sorted(timings.items())),
+        )
         if response.tool_calls:
-            logger.info("turn_step correlation=%s path=tool round=%d tools=%s", correlation, rounds + 1,
-                        ",".join(sorted({call["name"] for call in response.tool_calls}))[:200])
+            logger.info(
+                "turn_step correlation=%s path=tool round=%d tools=%s",
+                correlation,
+                rounds + 1,
+                ",".join(sorted({call["name"] for call in response.tool_calls}))[:200],
+            )
         else:
             logger.info("turn_end correlation=%s path=%s outcome=answered", correlation, "tool" if rounds else "direct")
         latest_human = max((i for i, m in enumerate(messages) if m.type == "human"), default=-1)
-        failed = any(m.type == "tool" and m.status == "error" for m in messages[latest_human + 1:])
+        failed = any(m.type == "tool" and m.status == "error" for m in messages[latest_human + 1 :])
         finished = connected and pending and _resume_requested(messages) and not response.tool_calls and not failed
         return {"messages": [response], "notion_pending_request": "" if finished else pending}
 
@@ -666,13 +866,36 @@ def build_direct_chat_graph(settings, model_factory, checkpointer, oauth, *, ide
         if any(call["name"] == "connect_notion" for call in calls):
             user = identity_provider()
             url = await oauth.begin(user) if user else "Notion unavailable: user identity missing from the request."
-            results = [ToolMessage(content="Notion connection pending; no tool was run.", name=call["name"], tool_call_id=call["id"], status="success" if call["name"] == "connect_notion" else "error") for call in calls]
-            original = state.get("notion_pending_request") or next((m.content for m in reversed(state["messages"]) if m.type == "human"), "")
-            return {"messages": [*results, AIMessage(content=_consent_text(url))], "notion_pending_request": original if isinstance(original, str) else ""}
+            results = [
+                ToolMessage(
+                    content="Notion connection pending; no tool was run.",
+                    name=call["name"],
+                    tool_call_id=call["id"],
+                    status="success" if call["name"] == "connect_notion" else "error",
+                )
+                for call in calls
+            ]
+            original = state.get("notion_pending_request") or next(
+                (m.content for m in reversed(state["messages"]) if m.type == "human"), ""
+            )
+            return {
+                "messages": [*results, AIMessage(content=_consent_text(url))],
+                "notion_pending_request": original if isinstance(original, str) else "",
+            }
         try:
             tools, protected, _, notion_names, toolbox_names, _ = await load_tools(project=state.get("project_id"))
         except Exception:
-            return {"messages": [*[ToolMessage(content=_tool_error(RuntimeError()), tool_call_id=c["id"], name=c["name"], status="error") for c in calls], _notice("tools_unavailable", "Tool catalog unavailable; no call was run.")]}
+            return {
+                "messages": [
+                    *[
+                        ToolMessage(
+                            content=_tool_error(RuntimeError()), tool_call_id=c["id"], name=c["name"], status="error"
+                        )
+                        for c in calls
+                    ],
+                    _notice("tools_unavailable", "Tool catalog unavailable; no call was run."),
+                ]
+            }
         catalog = catalog_tools(tools)
         calls = [_without_empty_cursor(c) if c["name"] in notion_names else c for c in calls]
         # Passages of the owner's documents are outside data too: marked, never instructions.
@@ -680,10 +903,13 @@ def build_direct_chat_graph(settings, model_factory, checkpointer, oauth, *, ide
 
         def is_automatic_write(call):
             tool = catalog.get(call["name"])
-            return tool is not None and call["name"] in notion_names and may_execute_without_approval(tool, call["args"])
+            return (
+                tool is not None and call["name"] in notion_names and may_execute_without_approval(tool, call["args"])
+            )
 
         async def execute(call, user, thread):
             """One call, bounded in time. Always returns exactly one ToolMessage."""
+
             def failure(text):
                 return ToolMessage(content=text, name=call["name"], tool_call_id=call["id"], status="error")
 
@@ -694,7 +920,9 @@ def build_direct_chat_graph(settings, model_factory, checkpointer, oauth, *, ide
                     return failure("Write blocked: durable storage unavailable.")
                 args = approved_arguments(tool, call["args"])
                 operation = {"name": tool.name, "args": args, "fingerprint": tool_fingerprint(tool)}
-                action_id = hashlib.sha256(json.dumps([thread, state["approval_last_turn"], call["id"], operation], sort_keys=True).encode()).hexdigest()
+                action_id = hashlib.sha256(
+                    json.dumps([thread, state["approval_last_turn"], call["id"], operation], sort_keys=True).encode()
+                ).hexdigest()
                 if not await ledger.claim_automatic(user, thread, action_id, operation_digest(operation)):
                     return failure("This write was already handled or its outcome is uncertain; check the page.")
                 call = {**call, "args": args}
@@ -703,24 +931,33 @@ def build_direct_chat_graph(settings, model_factory, checkpointer, oauth, *, ide
                 problem = reliability.schema_problem(tool, call["args"])
                 if problem:
                     logger.info("tool_arguments_invalid tool=%s", call["name"])
-                    return failure(json.dumps({"code": "invalid_arguments", "message": problem, "retryable": False},
-                                              ensure_ascii=False))
+                    return failure(
+                        json.dumps(
+                            {"code": "invalid_arguments", "message": problem, "retryable": False}, ensure_ascii=False
+                        )
+                    )
             # A write (action_id) runs once; a read may be retried once on a transient failure.
             attempts = 1 if action_id else 1 + reliability.READ_RETRIES
             result = None
             for attempt in range(attempts):
                 transient = False
                 try:
-                    result = (await asyncio.wait_for(ToolNode(tools, handle_tool_errors=_tool_error).ainvoke(
-                        {"messages": [AIMessage(content="", tool_calls=[call])]}, config),
-                        reliability.TOOL_TIMEOUT_SECONDS))["messages"][0]
+                    result = (
+                        await asyncio.wait_for(
+                            ToolNode(tools, handle_tool_errors=_tool_error).ainvoke(
+                                {"messages": [AIMessage(content="", tool_calls=[call])]}, config
+                            ),
+                            reliability.TOOL_TIMEOUT_SECONDS,
+                        )
+                    )["messages"][0]
                     transient = result.status == "error" and reliability.is_retryable_result(result.content)
                     if result.status == "error":
                         # The tool name only: what the tool answered may hold the owner's content.
                         logger.warning("tool_failed tool=%s", call["name"])
                     if action_id:
-                        await ledger.finish_automatic(user, thread, action_id,
-                                                      "failed" if result.status == "error" else "succeeded")
+                        await ledger.finish_automatic(
+                            user, thread, action_id, "failed" if result.status == "error" else "succeeded"
+                        )
                 except GraphBubbleUp:
                     raise
                 except Exception as error:
@@ -753,14 +990,20 @@ def build_direct_chat_graph(settings, model_factory, checkpointer, oauth, *, ide
                     return await execute(call, user, thread)
 
             reads = [i for i, call in enumerate(safe_calls) if not is_automatic_write(call)]
-            for index, outcome in zip(reads, await asyncio.gather(*(bounded(safe_calls[i]) for i in reads))):
+            for index, outcome in zip(
+                reads, await asyncio.gather(*(bounded(safe_calls[i]) for i in reads)), strict=False
+            ):
                 results[index] = outcome
             for index, call in enumerate(safe_calls):
                 if results[index] is not None:
                     continue
                 if any(r is not None and r.status == "error" for r in results[:index]):
-                    results[index] = ToolMessage(content="Not run after an earlier operation failed.",
-                                                 name=call["name"], tool_call_id=call["id"], status="error")
+                    results[index] = ToolMessage(
+                        content="Not run after an earlier operation failed.",
+                        name=call["name"],
+                        tool_call_id=call["id"],
+                        status="error",
+                    )
                 else:
                     results[index] = await execute(call, user, thread)
             return results
@@ -769,8 +1012,10 @@ def build_direct_chat_graph(settings, model_factory, checkpointer, oauth, *, ide
             if call["name"] in toolbox_names:
                 return call["name"] in protected or toolbox_policy.requires_approval(call["name"], call["args"])
             return call["name"] in protected and (
-                call["name"] not in notion_names or call["name"] in settings.notion_write_tool_names or
-                not may_execute_without_approval(catalog[call["name"]], call["args"]))
+                call["name"] not in notion_names
+                or call["name"] in settings.notion_write_tool_names
+                or not may_execute_without_approval(catalog[call["name"]], call["args"])
+            )
 
         writes = [c for c in calls if gated(c)]
         if writes:
@@ -782,27 +1027,51 @@ def build_direct_chat_graph(settings, model_factory, checkpointer, oauth, *, ide
             if ledger is not None and user and thread:
                 for call in writes:
                     tool = catalog[call["name"]]
-                    arguments = approved_arguments(tool, {k: v for k, v in call["args"].items() if k not in _TRACKING_ARGS})
+                    arguments = approved_arguments(
+                        tool, {k: v for k, v in call["args"].items() if k not in _TRACKING_ARGS}
+                    )
                     if call["name"] in {"notion-delete-pages", "notion-delete-databases"}:
                         # The provider requires this flag. Bind the exact value to
                         # the proposal, but invoke it only after the owner's approval.
                         arguments = approved_arguments(tool, {**arguments, "user_confirmed": True})
-                    operation = {"name": call["name"], "args": arguments,
-                                 "description": tool.description, "fingerprint": tool_fingerprint(tool),
-                                 # Display only: the owner's language and the titles read for the question.
-                                 "lang": lang, "labels": await _labels_for({"args": arguments}, catalog)}
+                    operation = {
+                        "name": call["name"],
+                        "args": arguments,
+                        "description": tool.description,
+                        "fingerprint": tool_fingerprint(tool),
+                        # Display only: the owner's language and the titles read for the question.
+                        "lang": lang,
+                        "labels": await _labels_for({"args": arguments}, catalog),
+                    }
                     if not _presentable(operation):
                         # Names only, never values: which argument made the scope unclear.
-                        logger.warning("operation_not_presentable tool=%s arg_keys=%s", call["name"], ",".join(sorted(arguments)))
+                        logger.warning(
+                            "operation_not_presentable tool=%s arg_keys=%s", call["name"], ",".join(sorted(arguments))
+                        )
                         for action in pending:
                             await ledger.reject(user, thread, action)
-                        return {"messages": [*[ToolMessage(content="Operation blocked: scope too large to confirm clearly.",
-                            tool_call_id=c["id"], name=c["name"], status="error") for c in calls],
-                            AIMessage(content=say("unclear", lang))]}
+                        return {
+                            "messages": [
+                                *[
+                                    ToolMessage(
+                                        content="Operation blocked: scope too large to confirm clearly.",
+                                        tool_call_id=c["id"],
+                                        name=c["name"],
+                                        status="error",
+                                    )
+                                    for c in calls
+                                ],
+                                AIMessage(content=say("unclear", lang)),
+                            ]
+                        }
                     if not _safe_operation(operation):
                         break
                     # Stable across re-execution of the same checkpoint/tool call.
-                    action_id = hashlib.sha256(json.dumps([thread, state.get("approval_last_turn"), call["id"], operation], sort_keys=True).encode()).hexdigest()
+                    action_id = hashlib.sha256(
+                        json.dumps(
+                            [thread, state.get("approval_last_turn"), call["id"], operation], sort_keys=True
+                        ).encode()
+                    ).hexdigest()
                     record = await ledger.create(user, thread, operation, action_id)
                     if record["status"] != "pending":
                         break
@@ -814,30 +1083,68 @@ def build_direct_chat_graph(settings, model_factory, checkpointer, oauth, *, ide
                     if safe_calls:
                         safe_results = await run_safe(safe_calls)
                     results_by_id = {result.tool_call_id: result for result in safe_results}
-                    results = [results_by_id.get(c["id"]) or ToolMessage(
-                        content="Deferred pending confirmation.", tool_call_id=c["id"], name=c["name"])
-                        for c in calls]
+                    results = [
+                        results_by_id.get(c["id"])
+                        or ToolMessage(content="Deferred pending confirmation.", tool_call_id=c["id"], name=c["name"])
+                        for c in calls
+                    ]
                     if any(result.status == "error" for result in safe_results):
                         for action in pending:
                             await ledger.reject(user, thread, action)
-                        return {"messages": [*results, _notice("batch_failed", "An operation failed; no deletion was started.")]}
+                        return {
+                            "messages": [
+                                *results,
+                                _notice("batch_failed", "An operation failed; no deletion was started."),
+                            ]
+                        }
                     presentation_id = state.get("approval_last_turn", "")
                     if not await ledger.present(user, thread, pending[0], presentation_id):
                         for action in pending:
                             await ledger.reject(user, thread, action)
-                        return {"messages": [*results, _notice("approval_conflict", "An earlier proposal is waiting for clarification.")]}
-                    return {"messages": [*results, _question(records[0], len(pending))],
-                            "notion_pending_actions": pending, "approval_presentation": presentation_id}
+                        return {
+                            "messages": [
+                                *results,
+                                _notice("approval_conflict", "An earlier proposal is waiting for clarification."),
+                            ]
+                        }
+                    return {
+                        "messages": [*results, _question(records[0], len(pending))],
+                        "notion_pending_actions": pending,
+                        "approval_presentation": presentation_id,
+                    }
             for action in pending:
                 await ledger.reject(user, thread, action)
-            return {"messages": [*[ToolMessage(content="Write blocked.", tool_call_id=c["id"], name=c["name"], status="error") for c in calls], _notice("approval_unavailable", "Write blocked: durable storage missing, operation consumed or sensitive parameters.")]}
+            return {
+                "messages": [
+                    *[
+                        ToolMessage(content="Write blocked.", tool_call_id=c["id"], name=c["name"], status="error")
+                        for c in calls
+                    ],
+                    _notice(
+                        "approval_unavailable",
+                        "Write blocked: durable storage missing, operation consumed or sensitive parameters.",
+                    ),
+                ]
+            }
         # Execution-time classification is authoritative even if the catalog
         # changed since the model was bound. Unknown names fail in ToolNode.
         results = await run_safe(calls)
-        if any(result.status == "error" and call["name"] in notion_names and
-               call["name"] in catalog and may_execute_without_approval(catalog[call["name"]], call["args"])
-               for call, result in zip(calls, results)):
-            return {"messages": [*results, _notice("tool_execution_failed", "An operation failed or its outcome is uncertain; check before retrying.")]}
+        if any(
+            result.status == "error"
+            and call["name"] in notion_names
+            and call["name"] in catalog
+            and may_execute_without_approval(catalog[call["name"]], call["args"])
+            for call, result in zip(calls, results, strict=False)
+        ):
+            return {
+                "messages": [
+                    *results,
+                    _notice(
+                        "tool_execution_failed",
+                        "An operation failed or its outcome is uncertain; check before retrying.",
+                    ),
+                ]
+            }
         return {"messages": results}
 
     async def run_ssh(state, config):
@@ -845,9 +1152,15 @@ def build_direct_chat_graph(settings, model_factory, checkpointer, oauth, *, ide
         gate stays unambiguous; at most one command waits for the owner's confirmation."""
         calls = state["messages"][-1].tool_calls
         if any(call["name"] not in ssh.SSH_TOOL_NAMES for call in calls) or len(calls) > ssh.MAX_PARALLEL_COMMANDS:
-            return {"messages": [ssh.error_message(call, "Call ssh_exec alone, at most "
-                                                   f"{ssh.MAX_PARALLEL_COMMANDS} commands per step; nothing was "
-                                                   "run.") for call in calls]}
+            return {
+                "messages": [
+                    ssh.error_message(
+                        call,
+                        f"Call ssh_exec alone, at most {ssh.MAX_PARALLEL_COMMANDS} commands per step; nothing was run.",
+                    )
+                    for call in calls
+                ]
+            }
         user = identity_provider()
         thread = config.get("configurable", {}).get("thread_id", "")
         turn, pending = state.get("approval_last_turn"), state.get("ssh_pending")
@@ -866,24 +1179,34 @@ def build_direct_chat_graph(settings, model_factory, checkpointer, oauth, *, ide
                 if ssh_judge is None:
                     return "CONFIRM"
                 started = time.monotonic()
-                verdict = await ssh_judge.judge(command=call["args"]["command"].strip(),
-                                                reason=call["args"].get("reason", ""),
-                                                owner_message=owner_message, outside_content=outside)
-                logger.info("ssh_verdict digest=%s verdict=%s outside=%s ms=%d",
-                            ssh.command_digest(user, thread, call["args"]["command"])[:12], verdict, outside,
-                            round((time.monotonic() - started) * 1000))
+                verdict = await ssh_judge.judge(
+                    command=call["args"]["command"].strip(),
+                    reason=call["args"].get("reason", ""),
+                    owner_message=owner_message,
+                    outside_content=outside,
+                )
+                logger.info(
+                    "ssh_verdict digest=%s verdict=%s outside=%s ms=%d",
+                    ssh.command_digest(user, thread, call["args"]["command"])[:12],
+                    verdict,
+                    outside,
+                    round((time.monotonic() - started) * 1000),
+                )
                 return verdict
 
             verdicts = await asyncio.gather(*(verdict_of(calls[i]) for i in to_judge))
-            for i, verdict in zip(to_judge, verdicts):
+            for i, verdict in zip(to_judge, verdicts, strict=False):
                 decisions[i] = decide(calls[i], verdict)
         update, waiting = {}, False
         for i, decision in enumerate(decisions):
             if decision.action == "confirm":
                 if waiting:
                     # One pending slot: the owner answers one question at a time.
-                    decisions[i] = ssh.Decision("refuse", "Nothing was run: another command of this step already "
-                                                          "waits for confirmation. Propose this one after it.")
+                    decisions[i] = ssh.Decision(
+                        "refuse",
+                        "Nothing was run: another command of this step already "
+                        "waits for confirmation. Propose this one after it.",
+                    )
                     continue
                 waiting = True
             if decision.pending is not None and (decision.pending or "ssh_pending" not in update):
@@ -902,9 +1225,9 @@ def build_direct_chat_graph(settings, model_factory, checkpointer, oauth, *, ide
             return ssh.result_message(call, outcome, elapsed)
 
         runs = [i for i, decision in enumerate(decisions) if decision.action == "run"]
-        outcomes = dict(zip(runs, await asyncio.gather(*(execute(calls[i]) for i in runs))))
+        outcomes = dict(zip(runs, await asyncio.gather(*(execute(calls[i]) for i in runs)), strict=False))
         results = []
-        for i, (call, decision) in enumerate(zip(calls, decisions)):
+        for i, (call, decision) in enumerate(zip(calls, decisions, strict=False)):
             if i in outcomes:
                 results.append(outcomes[i])
             elif decision.action == "confirm":
@@ -917,7 +1240,9 @@ def build_direct_chat_graph(settings, model_factory, checkpointer, oauth, *, ide
         calls = getattr(state["messages"][-1], "tool_calls", None)
         if not calls:
             return END
-        return "ssh" if ssh_runner is not None and any(call["name"] in ssh.SSH_TOOL_NAMES for call in calls) else "tools"
+        return (
+            "ssh" if ssh_runner is not None and any(call["name"] in ssh.SSH_TOOL_NAMES for call in calls) else "tools"
+        )
 
     def safe_execution_node(node):
         async def guarded(state, config):
@@ -931,9 +1256,21 @@ def build_direct_chat_graph(settings, model_factory, checkpointer, oauth, *, ide
                 messages = []
                 last = state["messages"][-1]
                 if isinstance(last, AIMessage):
-                    messages = [ToolMessage(content="Execution blocked.", tool_call_id=c["id"], name=c["name"], status="error") for c in last.tool_calls]
-                return {"messages": [*messages, _notice("execution_blocked", "Validation or storage unavailable. No further call; check any uncertain operation.")],
-                        "approval_stop": True}
+                    messages = [
+                        ToolMessage(content="Execution blocked.", tool_call_id=c["id"], name=c["name"], status="error")
+                        for c in last.tool_calls
+                    ]
+                return {
+                    "messages": [
+                        *messages,
+                        _notice(
+                            "execution_blocked",
+                            "Validation or storage unavailable. No further call; check any uncertain operation.",
+                        ),
+                    ],
+                    "approval_stop": True,
+                }
+
         return guarded
 
     workflow = StateGraph(NotionChatState)
@@ -974,13 +1311,20 @@ def _tool_error(error: Exception) -> str:
     if isinstance(error, GraphBubbleUp):
         raise error
     if isinstance(error, (asyncio.TimeoutError, TimeoutError)):
-        return json.dumps({"code": "tool_timeout", "message": "The tool did not answer in time.", "retryable": True},
-                          ensure_ascii=False)
+        return json.dumps(
+            {"code": "tool_timeout", "message": "The tool did not answer in time.", "retryable": True},
+            ensure_ascii=False,
+        )
     transient = reliability.is_transient(error)
-    body = {"code": "tool_temporarily_unavailable" if transient else "tool_execution_failed",
-            "message": ("The service is temporarily unavailable." if transient
-                        else "The call failed. Check the result before retrying a write."),
-            "retryable": transient}
+    body = {
+        "code": "tool_temporarily_unavailable" if transient else "tool_execution_failed",
+        "message": (
+            "The service is temporarily unavailable."
+            if transient
+            else "The call failed. Check the result before retrying a write."
+        ),
+        "retryable": transient,
+    }
     if transient:
         wait = reliability.retry_after_seconds(error)
         if wait:

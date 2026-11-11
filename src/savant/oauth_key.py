@@ -1,8 +1,8 @@
 """Resolve the shared Fernet key without exposing secret or SDK error payloads."""
 
-from contextlib import ExitStack
 import os
 import re
+from contextlib import ExitStack
 from urllib.parse import urlsplit
 from uuid import UUID
 
@@ -46,10 +46,15 @@ def load_fernet_key(*, use_key_vault: bool = False) -> str:
 
 def _read_key_vault(vault_url: str, secret_name: str) -> str:
     parsed = urlsplit(vault_url)
-    if (parsed.scheme != "https" or not parsed.hostname
-            or not parsed.hostname.endswith((".vault.azure.net", ".vault.usgovcloudapi.net", ".vault.azure.cn"))
-            or parsed.netloc != parsed.hostname or parsed.path not in {"", "/"}
-            or parsed.query or parsed.fragment):
+    if (
+        parsed.scheme != "https"
+        or not parsed.hostname
+        or not parsed.hostname.endswith((".vault.azure.net", ".vault.usgovcloudapi.net", ".vault.azure.cn"))
+        or parsed.netloc != parsed.hostname
+        or parsed.path not in {"", "/"}
+        or parsed.query
+        or parsed.fragment
+    ):
         raise RuntimeError("NOTION_OAUTH_KEY_VAULT_URL must be an HTTPS Azure Key Vault URL.")
     if not re.fullmatch(r"[A-Za-z0-9-]{1,127}", secret_name):
         raise RuntimeError("NOTION_OAUTH_KEY_VAULT_SECRET_NAME must name an existing Key Vault secret.")

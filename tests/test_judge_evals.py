@@ -1,4 +1,5 @@
 """Offline checks of the judge evaluations: datasets and pass^k, no model call, no credential."""
+
 import asyncio
 import json
 import logging
@@ -6,7 +7,8 @@ import logging
 import pytest
 
 from scripts.evaluate_semantic_approval import DATASET_PATH, DECISIONS, load_cases, run_trials
-from scripts.evaluate_ssh_judge import DATASET_PATH as SSH_DATASET, REQUIRED, VERDICTS
+from scripts.evaluate_ssh_judge import DATASET_PATH as SSH_DATASET
+from scripts.evaluate_ssh_judge import REQUIRED, VERDICTS
 
 
 def test_both_datasets_are_valid_and_cover_the_observed_cases():

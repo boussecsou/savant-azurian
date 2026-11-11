@@ -3,6 +3,7 @@
 Mounted by `bff_api` behind the same Easy Auth owner check as the chat. Nothing here logs an id,
 a title or a message: failures are reported by kind only (`bff_logging.py`).
 """
+
 from __future__ import annotations
 
 import logging
@@ -91,8 +92,9 @@ def create_workspace_router(service: WorkspaceService, require_owner, documents=
 
     @router.post("/sessions")
     async def create_session(body: SessionIn):
-        return _json(await guarded(service.create_session(body.id, body.projectId, body.title,
-                                                          pinned=body.pinned)), 201)
+        return _json(
+            await guarded(service.create_session(body.id, body.projectId, body.title, pinned=body.pinned)), 201
+        )
 
     @router.patch("/sessions/{session_id}")
     async def patch_session(session_id: str, body: SessionPatch):

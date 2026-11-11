@@ -15,13 +15,16 @@ def validate_response(raw):
     match = re.search(r"HTTP/\S+\s+(\d{3})[^\n]*\r?\n", raw)
     if not match or int(match[1]) != 200:
         raise ValueError("The runtime did not return HTTP 200.")
-    http = raw[match.end():].replace("\r\n", "\n")
+    http = raw[match.end() :].replace("\r\n", "\n")
     _, separator, body = http.partition("\n\n")
     if not separator:
         raise ValueError("Missing HTTP response body.")
     if body.lstrip().startswith("data:") or "\ndata:" in body:
-        events = [json.loads(line[5:].strip()) for line in body.splitlines()
-                  if line.startswith("data:") and line[5:].strip() != "[DONE]"]
+        events = [
+            json.loads(line[5:].strip())
+            for line in body.splitlines()
+            if line.startswith("data:") and line[5:].strip() != "[DONE]"
+        ]
         completed = [event["response"] for event in events if event.get("type") == "response.completed"]
         if len(completed) != 1:
             raise ValueError("Missing completed Responses event.")
@@ -33,8 +36,13 @@ def validate_response(raw):
     output = response.get("output", [])
     if not output or any(item.get("type") not in {"message", "reasoning"} for item in output):
         raise ValueError("Unexpected tool or approval output in the runtime probe.")
-    text = "".join(part.get("text", "") for item in output if item.get("type") == "message"
-                   for part in item.get("content", []) if part.get("type") == "output_text")
+    text = "".join(
+        part.get("text", "")
+        for item in output
+        if item.get("type") == "message"
+        for part in item.get("content", [])
+        if part.get("type") == "output_text"
+    )
     if text.strip() != RUNTIME_SMOKE_EXPECTED:
         raise ValueError("The expected model probe text was not returned.")
 
@@ -47,10 +55,27 @@ def main():
     started = time.monotonic()
     try:
         result = subprocess.run(
-            ["azd", "ai", "agent", "invoke", "sa2-agent", RUNTIME_SMOKE_PROMPT,
-             "--version", version, "--protocol", "responses", "--new-session",
-             "--new-conversation", "--timeout", "180", "--output", "raw"],
-            capture_output=True, text=True, timeout=240,
+            [
+                "azd",
+                "ai",
+                "agent",
+                "invoke",
+                "sa2-agent",
+                RUNTIME_SMOKE_PROMPT,
+                "--version",
+                version,
+                "--protocol",
+                "responses",
+                "--new-session",
+                "--new-conversation",
+                "--timeout",
+                "180",
+                "--output",
+                "raw",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=240,
         )
         if result.returncode:
             raise ValueError("Remote invocation failed; inspect the targeted agent session privately.")

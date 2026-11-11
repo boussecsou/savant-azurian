@@ -9,6 +9,7 @@ Removing a document removes its chunks from the index first, then its file (D8: 
 shows, it no longer remembers). Blob deletion detection does not apply to chunked indexing, hence this
 explicit order. `Files` and `SearchIndex` are interfaces so the rules are tested without Azure.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -31,9 +32,13 @@ logger = logging.getLogger("savant.bff")
 EXTENSIONS = (".pdf", ".docx", ".pptx", ".txt", ".md")
 MAX_BYTES = 16 * 1024 * 1024
 NAME_MAX = 120
-CONTENT_TYPES = {".pdf": "application/pdf", ".txt": "text/plain; charset=utf-8", ".md": "text/markdown; charset=utf-8",
-                 ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                 ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation"}
+CONTENT_TYPES = {
+    ".pdf": "application/pdf",
+    ".txt": "text/plain; charset=utf-8",
+    ".md": "text/markdown; charset=utf-8",
+    ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+}
 
 
 class DocumentError(Exception):
@@ -48,6 +53,7 @@ class DocumentError(Exception):
 class Files(Protocol):
     async def list(self, prefix: str) -> list[dict]:
         """Blobs under the prefix: dicts with name, size, last_modified (ms) and metadata."""
+
     async def upload(self, name: str, data: bytes, content_type: str, metadata: dict) -> None: ...
     async def download(self, name: str) -> bytes: ...
     async def delete(self, name: str) -> None: ...
@@ -57,13 +63,17 @@ class Files(Protocol):
 class SearchIndex(Protocol):
     async def ready(self, project_id: str) -> set[str]:
         """Ids of the project's documents that have at least one chunk in the index."""
+
     async def failed(self) -> set[str]:
         """Blob names the indexer reported an error for in its last run."""
+
     async def delete_document(self, project_id: str, document_id: str) -> None: ...
     async def busy(self) -> bool:
         """True while an indexer run is in progress (it may still write chunks of a removed file)."""
+
     async def run(self) -> None:
         """Start the indexer now (best effort: it also runs on a schedule)."""
+
     async def close(self) -> None: ...
 
 
@@ -143,10 +153,17 @@ class DocumentLibrary:
         failed = await self.index.failed()
         documents = []
         for blob in sorted(blobs, key=lambda b: b.get("last_modified", 0), reverse=True):
-            state = ("ready" if blob["document_id"] in ready else
-                     "failed" if blob["name"] in failed else "indexing")
-            documents.append({"id": blob["document_id"], "projectId": project_id, "name": blob["file"],
-                              "size": blob.get("size", 0), "uploadedAt": blob.get("last_modified", 0), "state": state})
+            state = "ready" if blob["document_id"] in ready else "failed" if blob["name"] in failed else "indexing"
+            documents.append(
+                {
+                    "id": blob["document_id"],
+                    "projectId": project_id,
+                    "name": blob["file"],
+                    "size": blob.get("size", 0),
+                    "uploadedAt": blob.get("last_modified", 0),
+                    "state": state,
+                }
+            )
         return documents
 
     async def add(self, project_id: str, raw_name: str, data: bytes) -> dict:
@@ -157,14 +174,24 @@ class DocumentLibrary:
             raise DocumentError("too_large", "Files are limited to 16 MB.")
         document_id = uuid.uuid4().hex
         extension = "." + name.rsplit(".", 1)[-1].lower()
-        await self.files.upload(f"{project_id}/{document_id}/{name}", data, CONTENT_TYPES[extension],
-                                {"project_id": project_id, "document_id": document_id})
+        await self.files.upload(
+            f"{project_id}/{document_id}/{name}",
+            data,
+            CONTENT_TYPES[extension],
+            {"project_id": project_id, "document_id": document_id},
+        )
         try:
             await self.index.run()
         except Exception:
             pass  # the schedule picks the file up anyway; the state stays "indexing" until then
-        return {"id": document_id, "projectId": project_id, "name": name, "size": len(data),
-                "uploadedAt": int(time.time() * 1000), "state": "indexing"}
+        return {
+            "id": document_id,
+            "projectId": project_id,
+            "name": name,
+            "size": len(data),
+            "uploadedAt": int(time.time() * 1000),
+            "state": "indexing",
+        }
 
     async def _one(self, project_id: str, document_id: str) -> dict:
         document_id = _document(document_id)
@@ -176,7 +203,11 @@ class DocumentLibrary:
     async def file(self, project_id: str, document_id: str) -> tuple[str, str, bytes]:
         blob = await self._one(project_id, document_id)
         extension = "." + blob["file"].rsplit(".", 1)[-1].lower()
-        return blob["file"], CONTENT_TYPES.get(extension, "application/octet-stream"), await self.files.download(blob["name"])
+        return (
+            blob["file"],
+            CONTENT_TYPES.get(extension, "application/octet-stream"),
+            await self.files.download(blob["name"]),
+        )
 
     async def remove(self, project_id: str, document_id: str) -> None:
         blob = await self._one(project_id, document_id)
@@ -196,8 +227,9 @@ class DocumentLibrary:
                 if not await self.index.busy():
                     break
                 await asyncio.sleep(self.settle_interval)
-            await self._forget_orphans(project_id, await self.index.ready(project_id),
-                                       await self.files.list(f"{_project(project_id)}/"))
+            await self._forget_orphans(
+                project_id, await self.index.ready(project_id), await self.files.list(f"{_project(project_id)}/")
+            )
         except Exception as error:
             # The next listing retries; never a name or an id in the log.
             logger.warning("documents_settle_failed", extra={"error_type": type(error).__name__})
@@ -216,6 +248,7 @@ class BlobFiles:
 
     def __init__(self, account_url: str, container: str, credential):
         from azure.storage.blob.aio import ContainerClient
+
         self._container = ContainerClient(account_url, container, credential=credential)
 
     async def list(self, prefix: str) -> list[dict]:
@@ -227,8 +260,10 @@ class BlobFiles:
 
     async def upload(self, name: str, data: bytes, content_type: str, metadata: dict) -> None:
         from azure.storage.blob import ContentSettings
-        await self._container.upload_blob(name, data, overwrite=False, metadata=metadata,
-                                          content_settings=ContentSettings(content_type=content_type))
+
+        await self._container.upload_blob(
+            name, data, overwrite=False, metadata=metadata, content_settings=ContentSettings(content_type=content_type)
+        )
 
     async def download(self, name: str) -> bytes:
         stream = await self._container.download_blob(name)
@@ -236,6 +271,7 @@ class BlobFiles:
 
     async def delete(self, name: str) -> None:
         from azure.core.exceptions import ResourceNotFoundError
+
         try:
             await self._container.delete_blob(name)
         except ResourceNotFoundError:
@@ -254,14 +290,16 @@ class AzureSearchIndex:
 
     def __init__(self, endpoint: str, index: str, indexer: str, credential, client=None):
         import httpx
+
         self.endpoint, self.index_name, self.indexer = endpoint.rstrip("/"), index, indexer
         self._credential = credential
         self._client = client or httpx.AsyncClient(timeout=20)
 
     async def _post(self, path: str, body: dict | None = None):
         token = await self._credential.get_token(self.SCOPE)
-        response = await self._client.post(f"{self.endpoint}{path}?{self.API}", json=body,
-                                           headers={"Authorization": f"Bearer {token.token}"})
+        response = await self._client.post(
+            f"{self.endpoint}{path}?{self.API}", json=body, headers={"Authorization": f"Bearer {token.token}"}
+        )
         response.raise_for_status()
         return response
 
@@ -282,13 +320,17 @@ class AzureSearchIndex:
             skip += self.PAGE
 
     async def ready(self, project_id: str) -> set[str]:
-        return {item.get("document_id") for item in await self._chunks(f"project_id eq '{_project(project_id)}'",
-                                                                        "document_id")}
+        return {
+            item.get("document_id")
+            for item in await self._chunks(f"project_id eq '{_project(project_id)}'", "document_id")
+        }
 
     async def failed(self) -> set[str]:
         token = await self._credential.get_token(self.SCOPE)
-        response = await self._client.get(f"{self.endpoint}/indexers('{self.indexer}')/status?{self.API}",
-                                          headers={"Authorization": f"Bearer {token.token}"})
+        response = await self._client.get(
+            f"{self.endpoint}/indexers('{self.indexer}')/status?{self.API}",
+            headers={"Authorization": f"Bearer {token.token}"},
+        )
         response.raise_for_status()
         last = response.json().get("lastResult") or {}
         names = set()
@@ -301,8 +343,10 @@ class AzureSearchIndex:
 
     async def busy(self) -> bool:
         token = await self._credential.get_token(self.SCOPE)
-        response = await self._client.get(f"{self.endpoint}/indexers('{self.indexer}')/status?{self.API}",
-                                          headers={"Authorization": f"Bearer {token.token}"})
+        response = await self._client.get(
+            f"{self.endpoint}/indexers('{self.indexer}')/status?{self.API}",
+            headers={"Authorization": f"Bearer {token.token}"},
+        )
         response.raise_for_status()
         return ((response.json().get("lastResult") or {}).get("status") or "") == "inProgress"
 
@@ -316,11 +360,14 @@ class AzureSearchIndex:
             chunks = await self._chunks(filter_, "chunk_id", paged=False)
             if not chunks:
                 return
-            await self._post(f"/indexes('{self.index_name}')/docs/index",
-                             {"value": [{"@search.action": "delete", "chunk_id": c["chunk_id"]} for c in chunks]})
+            await self._post(
+                f"/indexes('{self.index_name}')/docs/index",
+                {"value": [{"@search.action": "delete", "chunk_id": c["chunk_id"]} for c in chunks]},
+            )
 
     async def run(self) -> None:
         import httpx
+
         try:
             await self._post(f"/indexers('{self.indexer}')/run")
         except httpx.HTTPStatusError as error:

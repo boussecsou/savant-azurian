@@ -1,6 +1,5 @@
 import json
 import subprocess
-from pathlib import Path
 
 import pytest
 
@@ -8,22 +7,25 @@ from scripts.component_changes import classify, classify_checks, load_manifest
 from scripts.release_plan import changed_since, last_checkpoint, verify_ci
 
 
-@pytest.mark.parametrize("paths,agent,bff", [
-    (["src/savant/agent.py"], True, False),
-    (["src/savant/tools/notion.py"], True, False),
-    (["src/savant/oauth_callback.py"], False, True),
-    (["src/savant/bff_logging.py"], False, True),
-    (["src/savant/notion_oauth.py"], True, True),
-    (["src/savant/oauth_runtime.py"], True, True),
-    (["src/savant/oauth_key.py"], True, True),
-    (["uv.lock"], True, True),
-    (["docs/architecture.md"], False, False),
-    (["tests/test_graph.py"], False, False),
-    (["pwa/src/api.ts", "pwa/package-lock.json"], False, False),
-    (["unknown/new-runtime.toml"], True, True),
-    (["src/savant/agent.py", "src/savant/oauth_callback.py"], True, True),
-    ([], False, False),
-])
+@pytest.mark.parametrize(
+    "paths,agent,bff",
+    [
+        (["src/savant/agent.py"], True, False),
+        (["src/savant/tools/notion.py"], True, False),
+        (["src/savant/oauth_callback.py"], False, True),
+        (["src/savant/bff_logging.py"], False, True),
+        (["src/savant/notion_oauth.py"], True, True),
+        (["src/savant/oauth_runtime.py"], True, True),
+        (["src/savant/oauth_key.py"], True, True),
+        (["uv.lock"], True, True),
+        (["docs/architecture.md"], False, False),
+        (["tests/test_graph.py"], False, False),
+        (["pwa/src/api.ts", "pwa/package-lock.json"], False, False),
+        (["unknown/new-runtime.toml"], True, True),
+        (["src/savant/agent.py", "src/savant/oauth_callback.py"], True, True),
+        ([], False, False),
+    ],
+)
 def test_component_runtime_ownership(paths, agent, bff):
     result = classify(paths)
     assert result["agent"]["runtime"] is agent
@@ -54,7 +56,11 @@ def test_ci_only_checks_cannot_shadow_a_component_or_escape_the_repository(tmp_p
 def test_new_component_uses_the_same_policy_without_code_changes():
     manifest = load_manifest()
     manifest["components"]["frontend"] = {
-        "runtime": ["frontend/**"], "source_files": [], "exclude": [], "ci": ["tests/frontend/**"], "workflow": "frontend.yml"
+        "runtime": ["frontend/**"],
+        "source_files": [],
+        "exclude": [],
+        "ci": ["tests/frontend/**"],
+        "workflow": "frontend.yml",
     }
     result = classify(["frontend/app.js"], manifest)
     assert result["frontend"]["runtime"]
@@ -72,8 +78,10 @@ def test_component_registry_rejects_bad_workflows_and_ambiguous_paths(tmp_path):
 
 def test_full_range_detects_an_earlier_change_and_renamed_shared_file(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
+
     def git(*args):
         return subprocess.check_output(["git", *args], text=True).strip()
+
     git("init", "-q")
     git("config", "user.name", "Test")
     git("config", "user.email", "test@example.com")
@@ -98,6 +106,7 @@ def test_full_range_detects_an_earlier_change_and_renamed_shared_file(tmp_path, 
 
 def test_checkpoint_artifact_pagination_and_legacy_bff_name():
     sha = "a" * 40
+
     def request(endpoint):
         if "/workflows/" in endpoint:
             return {"workflow_runs": [{"id": 2}, {"id": 1}]}
@@ -106,21 +115,39 @@ def test_checkpoint_artifact_pagination_and_legacy_bff_name():
         if endpoint.endswith("page=1"):
             return {"artifacts": [{"name": "other", "expired": False}] * 100}
         return {"artifacts": [{"name": f"bff-checkpoint-{sha}", "expired": False}]}
+
     assert last_checkpoint("owner/repo", "3", "bff", "publish-bff.yml", request) == sha
 
 
 def test_ci_must_be_successful_push_for_exact_sha_in_the_same_repo():
     sha = "a" * 40
-    run = {"head_sha": sha, "head_branch": "main", "event": "push", "conclusion": "success", "head_repository": {"full_name": "owner/repo"}}
+    run = {
+        "head_sha": sha,
+        "head_branch": "main",
+        "event": "push",
+        "conclusion": "success",
+        "head_repository": {"full_name": "owner/repo"},
+    }
     verify_ci("owner/repo", sha, lambda _: {"workflow_runs": [run]})
-    for changed in ({"event": "pull_request"}, {"head_sha": "b" * 40}, {"conclusion": "failure"}, {"head_repository": {"full_name": "other/repo"}}):
+    for changed in (
+        {"event": "pull_request"},
+        {"head_sha": "b" * 40},
+        {"conclusion": "failure"},
+        {"head_repository": {"full_name": "other/repo"}},
+    ):
         with pytest.raises(RuntimeError):
-            verify_ci("owner/repo", sha, lambda _: {"workflow_runs": [run | changed]}, attempts=1)
+            verify_ci("owner/repo", sha, lambda _, changed=changed: {"workflow_runs": [run | changed]}, attempts=1)
 
 
 def test_ci_lookup_retries_while_github_api_lags_behind_the_finished_run():
     sha = "a" * 40
-    run = {"head_sha": sha, "head_branch": "main", "event": "push", "conclusion": "success", "head_repository": {"full_name": "owner/repo"}}
+    run = {
+        "head_sha": sha,
+        "head_branch": "main",
+        "event": "push",
+        "conclusion": "success",
+        "head_repository": {"full_name": "owner/repo"},
+    }
     answers = iter([[], [], [run]])
     sleeps = []
     verify_ci("owner/repo", sha, lambda _: {"workflow_runs": next(answers)}, attempts=4, delay=2, sleep=sleeps.append)
@@ -136,6 +163,7 @@ def test_ci_lookup_gives_up_after_the_last_attempt():
 
 def test_superseded_head_never_releases_or_advances_checkpoint(monkeypatch):
     from scripts import release_plan
+
     monkeypatch.setenv("GITHUB_REPOSITORY", "owner/repo")
     monkeypatch.setattr(release_plan.subprocess, "check_output", lambda *a, **kw: "a" * 40)
     monkeypatch.setattr(release_plan, "api", lambda _: {"object": {"sha": "b" * 40}})

@@ -1,4 +1,5 @@
 """Trusted user-turn extraction and isolated semantic consent evaluation."""
+
 from __future__ import annotations
 
 import asyncio
@@ -6,11 +7,10 @@ import json
 import logging
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict
-
 from langchain_azure_ai.agents.hosting import ResponsesHostServer
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langgraph.constants import TAG_NOSTREAM
+from pydantic import BaseModel, ConfigDict
 
 logger = logging.getLogger(__name__)
 
@@ -21,14 +21,17 @@ def user_text(message) -> str | None:
     if isinstance(message.content, str):
         return message.content
     blocks = message.content
-    if not all(isinstance(b, dict) and b.get("type") in {"text", "input_text"}
-               and isinstance(b.get("text"), str) for b in blocks):
+    if not all(
+        isinstance(b, dict) and b.get("type") in {"text", "input_text"} and isinstance(b.get("text"), str)
+        for b in blocks
+    ):
         return None
     return "\n".join(b["text"] for b in blocks)
 
 
 class ApprovalDecision(BaseModel):
     """A classifier verdict, never an execution capability."""
+
     model_config = ConfigDict(extra="forbid")
     decision: Literal["APPROVE", "REJECT", "CLARIFY"]
 
@@ -88,10 +91,13 @@ async def structured_verdict(model, schema, instructions: str, payload: dict, ti
         if len(encoded) > MAX_JUDGE_PAYLOAD_CHARS:
             return None, "payload_too_large"
         classifier = model.with_structured_output(schema, method="json_schema", strict=True, include_raw=True)
-        result = await asyncio.wait_for(classifier.ainvoke([
-            SystemMessage(content=instructions), HumanMessage(content=encoded)
-        ], config={"tags": [TAG_NOSTREAM]}), timeout=timeout)
-    except (asyncio.TimeoutError, TimeoutError):
+        result = await asyncio.wait_for(
+            classifier.ainvoke(
+                [SystemMessage(content=instructions), HumanMessage(content=encoded)], config={"tags": [TAG_NOSTREAM]}
+            ),
+            timeout=timeout,
+        )
+    except TimeoutError:
         return None, "timeout"
     except Exception as error:
         # Do not expose token-bearing model/transport errors in responses or logs.
@@ -105,8 +111,10 @@ async def structured_verdict(model, schema, instructions: str, payload: dict, ti
         return None, "tool_call"
     if raw.response_metadata.get("status") != "completed":
         return None, "incomplete"
-    if raw.additional_kwargs.get("refusal") or (isinstance(raw.content, list) and any(
-            isinstance(block, dict) and block.get("type") == "refusal" for block in raw.content)):
+    if raw.additional_kwargs.get("refusal") or (
+        isinstance(raw.content, list)
+        and any(isinstance(block, dict) and block.get("type") == "refusal" for block in raw.content)
+    ):
         return None, "refusal"
     if not isinstance(parsed, schema):
         return None, "unparsed"
@@ -115,6 +123,7 @@ async def structured_verdict(model, schema, instructions: str, payload: dict, ti
 
 class SemanticApprovalGuardrail:
     """An isolated structured LLM call; every failure leaves execution blocked."""
+
     def __init__(self, model, *, timeout=10):
         if not 0 < timeout <= 30:
             raise ValueError("Guardrail timeout must be between 0 and 30 seconds.")
@@ -124,9 +133,17 @@ class SemanticApprovalGuardrail:
         if not isinstance(user_message, str) or not user_message.strip():
             return "CLARIFY"
         parsed, failure = await structured_verdict(
-            self.model, ApprovalDecision, APPROVAL_INSTRUCTIONS,
-            {"operation": operation, "proposal": proposal, "latest_user_message": user_message,
-             "context": context or {}}, self.timeout)
+            self.model,
+            ApprovalDecision,
+            APPROVAL_INSTRUCTIONS,
+            {
+                "operation": operation,
+                "proposal": proposal,
+                "latest_user_message": user_message,
+                "context": context or {},
+            },
+            self.timeout,
+        )
         if parsed is None:
             # Fail closed, but say why: a silent CLARIFY looks like a hesitant judge (issue #50).
             logger.warning("approval_judge_failed reason=%s", failure)
@@ -137,6 +154,7 @@ class SemanticApprovalGuardrail:
 def approved_arguments(tool, arguments):
     """Validate before presentation; preserve the exact normalized wire arguments."""
     import json
+
     from jsonschema import validators
 
     schema = tool.args_schema
@@ -163,7 +181,7 @@ def request_project(request) -> str | None:
 
 
 def request_channel(request) -> str:
-    """"voice" only when the BFF marks the turn as spoken (metadata channel=voice), else "text"."""
+    """ "voice" only when the BFF marks the turn as spoken (metadata channel=voice), else "text"."""
     metadata = request.get("metadata")
     return "voice" if isinstance(metadata, dict) and metadata.get("channel") == "voice" else "text"
 
@@ -175,6 +193,7 @@ class ConversationalResponsesHostServer(ResponsesHostServer):
     tool, developer and system items can never supply this envelope. The host's
     response ID scopes one confirmation turn and is not generated by the model.
     """
+
     async def build_input(self, request, context, *, skip_call_ids=None):
         graph_input = await super().build_input(request, context, skip_call_ids=skip_call_ids)
         messages = graph_input.get("messages", [])
@@ -182,10 +201,13 @@ class ConversationalResponsesHostServer(ResponsesHostServer):
         # multi-user-item requests rather than silently select an earlier 'yes'.
         humans = [m for m in messages if isinstance(m, HumanMessage)]
         text = user_text(humans[0]) if len(humans) == 1 and messages[-1] is humans[0] else None
-        graph_input["approval_user_turn"] = {"id": context.response_id, "text": text,
-                                             "source": "responses",
-                                             "previous_response_id": request.get("previous_response_id"),
-                                             "conversation": request.get("conversation")}
+        graph_input["approval_user_turn"] = {
+            "id": context.response_id,
+            "text": text,
+            "source": "responses",
+            "previous_response_id": request.get("previous_response_id"),
+            "conversation": request.get("conversation"),
+        }
         # Set on every turn: one conversation can switch between typing and voice.
         graph_input["channel"] = request_channel(request)
         # Set on every turn too: a session can move to another project.
