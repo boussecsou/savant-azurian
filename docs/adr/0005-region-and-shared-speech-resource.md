@@ -32,7 +32,7 @@ Speech-to-text, text-to-speech, Foundry, Container Apps and Key Vault must stay 
 **Negative / risks**
 
 - The subscription policy is the hard constraint, and it also rules out Azure Static Web Apps (see [ADR-0010](0010-monorepo-local-pwa-and-entra-owner-access.md)).
-- Anyone reproducing this project on another subscription is free to pick a different region, as long as the model, Speech and hosted agents are available there. The region is an input of the deployment (`AZURE_LOCATION` in the [configuration reference](../configuration.md)).
+- Anyone reproducing this project on another subscription is free to pick a different region, as long as the model, Speech and hosted agents are available there. The region is an input of the [deployment guide](../deployment.md).
 
 ## Related
 

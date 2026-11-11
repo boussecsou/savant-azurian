@@ -6,8 +6,7 @@
 # variable. It is not overwritten if the secret already exists: rotating it would make the stored
 # tokens unreadable and force a new Notion consent.
 #
-# Needs: Azure CLI signed in, the azd environment holding KEY_VAULT_NAME, and the Key Vault Secrets
-# Officer role on the vault.
+# Needs: Azure CLI signed in, `azd provision` done (you get Key Vault Secrets Officer from it).
 #   scripts/setup/generate-notion-key.sh            # dry run
 #   scripts/setup/generate-notion-key.sh --apply
 set -euo pipefail

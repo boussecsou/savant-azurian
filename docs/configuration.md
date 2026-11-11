@@ -1,17 +1,17 @@
 # Configuration reference
 
-Every setting of Savant Azurian, in one place. A test (`tests/test_config_docs.py`) fails when the code, `.env.example`, `azure.yaml`, or the workflows use a variable that this page does not describe.
+Every setting of Savant Azurian, in one place. A test (`tests/test_config_docs.py`) fails when the code, `.env.example`, `azure.yaml`, the Bicep outputs or the workflows use a variable that this page does not describe.
 
 ## Where a value lives
 
 | Kind | Lives in | Rule |
 | --- | --- | --- |
 | Local development values | `.env` (copied from `.env.example`) | Git ignores it. Never commit it. |
-| Deployment values (URLs, names, IDs) | the azd environment, `.azure/<env>/.env` | Set with `azd env set`. `azure.yaml` reads it as `${NAME}`. Nothing personal is hard-coded in the repository. |
+| Deployment values (URLs, names, IDs) | the azd environment, `.azure/<env>/.env` | Bicep outputs fill it. `azure.yaml` reads it as `${NAME}`. Nothing personal is hard-coded in the repository. |
 | CI values | GitHub repository variables | Same names as the azd variables. Copied by `scripts/setup/github-variables.sh`. |
 | Secrets | Azure Key Vault | Never in Git, `.env`, the azd environment or GitHub. See [Secrets](#secrets). |
 
-The **Scope** column says who reads a variable: `agent` (the hosted agent, also local), `bff` (the web backend), `local` (local development only), `script` (a script in `scripts/`), `azd` (the Azure Developer CLI), `ci` (GitHub Actions), `platform` (injected by Foundry), `sdk` (read by an Azure SDK, not by this code). The drift test requires the scopes `agent`, `bff`, `local` and `script` to match what the code really reads.
+The **Scope** column says who reads a variable: `agent` (the hosted agent, also local), `bff` (the web backend), `local` (local development only), `script` (a script in `scripts/`), `azd` (the Azure Developer CLI and the Bicep template), `ci` (GitHub Actions), `platform` (injected by Foundry), `sdk` (read by an Azure SDK, not by this code). The drift test requires the scopes `agent`, `bff`, `local` and `script` to match what the code really reads.
 
 ## Model and agent runtime
 
@@ -101,7 +101,6 @@ Read by `savant.oauth_callback` and `savant.bff_api`. Without `COSMOS_ENDPOINT` 
 | `COSMOS_DATABASE` | bff | no | `sa2` | `.env` | Cosmos DB database name. |
 | `DOCUMENTS_ACCOUNT_URL` | bff | no | empty | azd output | Blob endpoint for project documents. With `SEARCH_ENDPOINT` it turns uploads on. |
 | `DOCUMENTS_CONTAINER` | bff | no | `documents` | `.env` | Blob container for project documents. |
-| `AZURE_CLIENT_ID` | sdk | no | empty | the Container App | Selects the BFF's user-assigned identity for `DefaultAzureCredential`. Read by the Azure SDK, not by this code. |
 
 ## Injected by the platform or by CI
 
@@ -120,20 +119,45 @@ Never put these in `.env` or `azure.yaml`. They are listed so the drift test can
 | `IMAGE_REPOSITORY` | ci | no | `sa2-bff` | `publish-bff.yml` | Repository name of the BFF image in the registry. |
 | `PUBLISH_V1` | ci | no | `false` | `publish-bff.yml` | Manual escape hatch for the first image publication. |
 
-## azd environment
+## azd environment: inputs
 
-Set with `azd env set NAME value`. The values live in `.azure/<env>/.env`, which Git ignores. `azure.yaml`, the deployment workflow and the scripts in `scripts/setup/` read them. The other values `azure.yaml` uses (such as `TOOLBOX_ENDPOINT` or `SEARCH_ENDPOINT`) are described in the sections above.
+Set with `azd env set NAME value` before `azd provision`. They live in `.azure/<env>/.env`, which Git ignores. `infra/main.bicepparam` reads them.
 
 | Variable | Scope | Secret | Default | Set in | Description |
 | --- | --- | --- | --- | --- | --- |
+| `AZURE_ENV_NAME` | azd | no | (required) | `azd env new` | Environment name. It prefixes the resource group and the resource names. |
+| `AZURE_LOCATION` | azd | no | (required) | `azd env set` | Azure region. Pick one that offers your chat model and hosted agents. |
 | `AZURE_SUBSCRIPTION_ID` | azd | no | (required) | `azd env set` | Target subscription. |
 | `AZURE_TENANT_ID` | azd | no | (required) | `azd env set` | Entra tenant. |
-| `AZURE_LOCATION` | azd | no | (required) | `azd env set` | Azure region. Pick one that offers your chat model and hosted agents. |
-| `AZURE_AI_PROJECT_ID` | azd | no |  | `azd env set` | ARM ID of the Foundry project. |
-| `KEY_VAULT_NAME` | azd | no |  | `azd env set` | Key Vault name, used by the setup scripts. |
-| `KEY_VAULT_URL` | azd | no |  | `azd env set` | Key Vault URL. Read by `azure.yaml` for the Notion encryption key. |
-| `ACR_NAME` | azd | no |  | `azd env set` | Container registry name. Also a GitHub variable for `publish-bff.yml`. |
-| `OIDC_CLIENT_ID` | azd | no |  | `azd env set` | Client ID of the identity GitHub Actions signs in with. It becomes the GitHub variable `AZURE_CLIENT_ID`. |
+| `AZURE_PRINCIPAL_ID` | azd | no | set by azd | azd | Object ID of the person deploying. Receives the deployer roles. |
+| `OIDC_GITHUB_REPOSITORY` | azd | no | empty | `azd env set` | `owner/name`. When set, a federated credential lets only `main` of that repository sign in. |
+| `MODEL_NAME` | azd | no | `gpt-6-luna` | `azd env set` | Model of the chat deployment. |
+| `MODEL_VERSION` | azd | no | `2026-09-22` | `azd env set` | Model version. |
+| `MODEL_SKU` | azd | no | `GlobalStandard` | `azd env set` | Deployment SKU. |
+| `MODEL_CAPACITY` | azd | no | `150` | `azd env set` | Deployment capacity, in thousands of tokens per minute. |
+| `BFF_ENCRYPTION_KEY_READY` | azd | no | `false` | `azd env set` | Set to `true` after `scripts/setup/generate-notion-key.sh` has created the key. The next `azd provision` then gives the BFF the key by Container Apps secret reference. |
+| `BFF_IMAGE` | azd | no | a public placeholder | `azd env set` | BFF image reference. Replace it with the pushed image to roll out. |
+
+## azd environment: outputs
+
+Written by `azd provision` from the outputs of `infra/main.bicep`. Read by `azure.yaml`, `scripts/setup/` and the GitHub variables script.
+
+| Variable | Scope | Secret | Default | Set in | Description |
+| --- | --- | --- | --- | --- | --- |
+| `AZURE_RESOURCE_GROUP` | azd | no |  | Bicep output | Resource group of everything. |
+| `AZURE_AI_PROJECT_ID` | azd | no |  | Bicep output | ARM ID of the Foundry project. |
+| `KEY_VAULT_NAME` | azd | no |  | Bicep output | Key Vault name. |
+| `KEY_VAULT_URL` | azd | no |  | Bicep output | Key Vault URL. |
+| `APP_INSIGHTS_NAME` | azd | no |  | Bicep output | Application Insights component name, used to grant the hosted agent its telemetry role. |
+| `STORAGE_ACCOUNT_NAME` | azd | no |  | Bicep output | Storage account (Notion token store and documents). |
+| `SEARCH_SERVICE_NAME` | azd | no |  | Bicep output | Azure AI Search service name. |
+| `FOUNDRY_ACCOUNT_NAME` | azd | no |  | Bicep output | Foundry (AI Services) account name. |
+| `ACR_NAME` | azd | no |  | Bicep output | Container registry name. Also a GitHub variable for `publish-bff.yml`. |
+| `ACR_LOGIN_SERVER` | azd | no |  | Bicep output | Registry login server. |
+| `BFF_APP_NAME` | azd | no |  | Bicep output | Container App name of the BFF. |
+| `BFF_URL` | azd | no |  | Bicep output | Public HTTPS URL of the BFF. |
+| `BFF_IDENTITY_PRINCIPAL_ID` | azd | no |  | Bicep output | Object ID of the BFF identity. |
+| `OIDC_CLIENT_ID` | azd | no |  | Bicep output | Client ID of the CI identity. It becomes the GitHub variable `AZURE_CLIENT_ID`. |
 
 ## GitHub repository variables
 
@@ -141,6 +165,7 @@ Configuration only, never secrets: GitHub signs in to Azure with OpenID Connect.
 
 | Variable | Scope | Secret | Default | Set in | Description |
 | --- | --- | --- | --- | --- | --- |
+| `AZURE_CLIENT_ID` | ci | no | (required) | GitHub variable | Client ID of the identity GitHub Actions signs in with (the azd value `OIDC_CLIENT_ID`). Not a secret: the sign-in uses OpenID Connect. |
 | `AZD_ENV_NAME` | ci | no | `savant-ci` | GitHub variable | Name of the azd environment the CD workflow creates on the runner. |
 | `BFF_AUTO_PUBLISH` | ci | no | unset | GitHub variable | `true` publishes the BFF image automatically after a green CI on `main`. |
 

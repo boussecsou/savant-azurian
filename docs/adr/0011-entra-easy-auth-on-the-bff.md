@@ -69,4 +69,4 @@ Created by the Azure portal ("Create new app registration"):
 
 ## Related
 
-[ADR-0009](0009-bff-owns-user-facing-oauth.md), [ADR-0010](0010-monorepo-local-pwa-and-entra-owner-access.md), [SDD-002](../design/sdd-002-architecture-and-azure-infrastructure.md), [ADR-0020](0020-keyless-access-with-entra-and-key-vault.md)
+[ADR-0009](0009-bff-owns-user-facing-oauth.md), [ADR-0010](0010-monorepo-local-pwa-and-entra-owner-access.md), [SDD-002](../design/sdd-002-architecture-and-azure-infrastructure.md), [ADR-0020](0020-keyless-access-with-entra-and-key-vault.md), [deployment guide](../deployment.md#9-turn-on-easy-auth-azure-portal)

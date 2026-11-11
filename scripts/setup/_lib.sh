@@ -36,7 +36,7 @@ require() {
   local missing=0 name
   for name in "$@"; do
     if [[ -z "${!name:-}" ]]; then
-      echo "Missing ${name}. Set it with 'azd env set ${name} <value>'." >&2
+      echo "Missing ${name}. Run 'azd provision' first, or set it with 'azd env set ${name} <value>'." >&2
       missing=1
     fi
   done

@@ -31,6 +31,7 @@ An ADR records **one** decision: what was chosen, what was rejected, and why, at
 | [0010](0010-monorepo-local-pwa-and-entra-owner-access.md) | One repository; web client runs locally; owner access with Entra ID | Accepted |
 | [0005](0005-region-and-shared-speech-resource.md) | Deploy everything in Italy North with one shared Speech resource | Accepted |
 | [0022](0022-bounded-tool-execution.md) | Bound every tool call: timeouts, validated arguments, limited retries, loop guard | Accepted |
+| [0023](0023-infrastructure-as-code-with-bicep-and-azd.md) | Describe the infrastructure in Bicep and deploy it with `azd` | **Proposed** |
 
 ### Agent, models and retrieval
 

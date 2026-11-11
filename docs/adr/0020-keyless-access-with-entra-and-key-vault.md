@@ -25,10 +25,10 @@ A public-facing personal agent holds powerful credentials by nature (a workspace
 
 **Negative / risks**
 
-- RBAC is more work than a key: every identity and role must be declared and granted.
+- RBAC is more work than a key: every identity and role must be declared and granted (see the [role matrix](../deployment.md#roles)).
 - The hosted agent's identity only exists after its first deployment, so its roles are granted in a second step.
 - Easy Auth's client secret expires after 365 days and must be renewed.
 
 ## Related
 
-[ADR-0009](0009-bff-owns-user-facing-oauth.md), [ADR-0011](0011-entra-easy-auth-on-the-bff.md), [configuration reference](../configuration.md#secrets)
+[ADR-0009](0009-bff-owns-user-facing-oauth.md), [ADR-0011](0011-entra-easy-auth-on-the-bff.md), [ADR-0023](0023-infrastructure-as-code-with-bicep-and-azd.md), [configuration reference](../configuration.md#secrets), [deployment guide](../deployment.md)

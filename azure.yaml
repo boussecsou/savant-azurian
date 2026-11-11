@@ -2,6 +2,13 @@
 
 name: savant-azurian
 
+# Infrastructure as code: `azd provision` deploys infra/main.bicep (see docs/deployment.md).
+# Its outputs are written to the azd environment and read below with the dollar-brace syntax.
+infra:
+    provider: bicep
+    path: infra
+    module: main
+
 services:
     ai-project:
         host: azure.ai.project
