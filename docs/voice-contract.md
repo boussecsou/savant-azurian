@@ -1,4 +1,4 @@
-# Voice-first contract and BFF responsibilities (task 31)
+# Voice-first contract and BFF responsibilities
 
 Extends the text contract (PWA → local Entra proxy → BFF `/api/chat/stream` → Hosted Agent `/responses`) to voice, adding the fewest moving parts.
 

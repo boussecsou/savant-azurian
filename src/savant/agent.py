@@ -48,7 +48,7 @@ def build_model(
         store=False,
         include=["reasoning.encrypted_content"],
         # Judges: no reasoning. Measured with pass^k on GPT-6 Luna, more reasoning made the judge
-        # doubt plain yeses (issue #50) and was slower. One retry absorbs a rate limit (429) shared
+        # doubt plain yeses and was slower. One retry absorbs a rate limit (429) shared
         # with the main agent; the guardrail's own timeout still bounds the whole call.
         **(
             {

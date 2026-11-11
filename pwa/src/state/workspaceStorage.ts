@@ -16,7 +16,7 @@ import {
 
 /**
  * Where the workspace lives. The UI only knows this interface, so the browser store below can be
- * replaced by the BFF (Cosmos DB, task 39) without touching a component. Nothing here ever throws:
+ * replaced by the BFF (Cosmos DB) without touching a component. Nothing here ever throws:
  * storage can be missing, blocked or full, and the app must keep working without it.
  */
 export interface SessionStore {

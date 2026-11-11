@@ -1,4 +1,4 @@
-# Tool reliability: confirmations, timeouts, retries and errors (task 29)
+# Tool reliability: confirmations, timeouts, retries and errors
 
 One rule for every tool, implemented in `src/savant/reliability.py` and applied in the chat graph (`tools/notion_chat.py`).
 
@@ -38,7 +38,7 @@ In every case: the confirmation text is built from the exact arguments, model ou
 - **A result is cut at 20,000 characters**, with a note asking for a narrower part. Only the copy the model reads is shortened.
 - **Older results shrink**: tool results from before the last three user messages are replaced by a short marker in what the model sees (the saved conversation keeps them; the agent can read the data again).
 - **Outside content is marked as data** (`spotlight.py`): successful results of Notion, the web and the toolbox are wrapped in `<untrusted_data>` tags, and the system prompt says that what is inside is never an order. This raises the bar; it does not stop a determined attacker alone.
-- **Outside content and SSH**: when the turn has read outside content, the SSH command judge is told so and asks for confirmation if a command looks driven by that content rather than by the owner. A plain read still runs (issue #51).
+- **Outside content and SSH**: when the turn has read outside content, the SSH command judge is told so and asks for confirmation if a command looks driven by that content rather than by the owner. A plain read still runs.
 - **SSH commands of one step** run side by side (at most 4); their verdicts are asked side by side too. At most one of them waits for confirmation.
 
 ## Errors the owner sees

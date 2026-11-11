@@ -260,7 +260,7 @@ def test_the_warm_up_request_starts_loading_the_toolbox(tmp_path, monkeypatch):
 
 
 def test_outside_content_marks_the_turn_until_the_owner_speaks_again():
-    """The mark is a hint for the SSH judge (issue #51); it no longer blocks a command by itself."""
+    """The mark is a hint for the SSH judge; it no longer blocks a command by itself."""
     outside = spotlight.wrap(ToolMessage(content="page text", tool_call_id="n", name="notion-fetch"), "notion-fetch")
     messages = [HumanMessage(content="look at my page", id="1"), outside]
     assert spotlight.tainted_turn(messages)

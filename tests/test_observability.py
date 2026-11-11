@@ -1,4 +1,4 @@
-"""Correlated, secret-free logs for one call across the BFF and the agent (task 30)."""
+"""Correlated, secret-free logs for one call across the BFF and the agent."""
 
 import asyncio
 import logging

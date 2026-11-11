@@ -363,7 +363,7 @@ def test_independent_commands_of_one_step_run_side_by_side():
 
 
 def test_a_read_after_a_web_search_in_the_same_turn_runs_without_confirmation():
-    """Issue #51: outside content read in the turn is a hint for the judge, not a block by itself."""
+    """Outside content read in the turn is a hint for the judge, not a block by itself."""
     from savant import spotlight
 
     runner, judge = Runner(), Judge()

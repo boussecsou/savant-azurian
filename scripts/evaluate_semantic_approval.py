@@ -2,7 +2,7 @@
 
 Without --run, validate the dataset only; do not create credentials or a client.
 A case passes only when every one of its --trials answers is expected (pass^k): a judge that
-says yes four times out of five still loops the owner on the fifth (issue #50). Judge failures
+says yes four times out of five still loops the owner on the fifth. Judge failures
 (rate limit, timeout...) are counted apart, so a 429 is never mistaken for a hesitant judge.
 """
 

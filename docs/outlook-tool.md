@@ -1,4 +1,4 @@
-# Outlook through the Foundry toolbox (task 28)
+# Outlook through the Foundry toolbox
 
 > **Status (2026-11-03): Outlook is set aside.** The agent now uses the toolbox `sa2-web` (web search and code interpreter only). In `sa2-toolbox`, the `outlook-sa2` source fails `tools/list` with `INVALID_CONFIGURATION` (MCP error `-32007`) when the BFF's managed identity is the caller, and one failing source makes the whole toolbox call fail. `sa2-toolbox` is left untouched for a later fix; the PWA hides the Outlook pill (`OUTLOOK_ENABLED = false` in `pwa/src/useOutlook.ts`).
 

@@ -1,4 +1,4 @@
-# Observability of the Hosted Agent (task 30)
+# Observability of the Hosted Agent
 
 The agent already exports its logs to the project's Application Insights (`fp-savant-azurian-2-resource-appinsights`); the BFF writes fixed events to the Container App console. This task adds one **correlation id** per turn and explicit start, path and end lines.
 

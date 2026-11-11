@@ -1,4 +1,4 @@
-"""Correlation id shared by the BFF and the agent logs (task 30).
+"""Correlation id shared by the BFF and the agent logs.
 
 Both sides know the Foundry response id of a turn: the agent receives it as the turn id, the BFF
 reads it from the stream's final event. Logging a short hash of it instead of the raw id keeps

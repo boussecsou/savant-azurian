@@ -68,7 +68,7 @@ def test_build_model_uses_separate_tool_free_classifier_configuration(monkeypatc
     assert captured["model"] == "approval-model"
     assert captured["base_url"] == settings.azure_openai_base_url
     assert captured["timeout"] == 4.5
-    # One retry for a rate limit; no reasoning (measured steadier on GPT-6 Luna, issue #50).
+    # One retry for a rate limit; no reasoning (measured steadier on GPT-6 Luna).
     assert captured["max_retries"] == 1
     assert captured["max_tokens"] == 256
     assert captured["reasoning_effort"] == "none"

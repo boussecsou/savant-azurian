@@ -145,7 +145,7 @@ class SemanticApprovalGuardrail:
             self.timeout,
         )
         if parsed is None:
-            # Fail closed, but say why: a silent CLARIFY looks like a hesitant judge (issue #50).
+            # Fail closed, but say why: a silent CLARIFY looks like a hesitant judge.
             logger.warning("approval_judge_failed reason=%s", failure)
             return "CLARIFY"
         return parsed.decision

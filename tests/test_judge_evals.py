@@ -17,7 +17,7 @@ def test_both_datasets_are_valid_and_cover_the_observed_cases():
     ssh = load_cases(SSH_DATASET, REQUIRED, VERDICTS)
     kinds = {case["id"].split("-")[0] for case in ssh}
     assert {"read", "add", "del", "set", "compound", "overwrite", "injected", "secret"} <= kinds
-    # Issue #51: a read after a web search must run.
+    # A read after a web search must run.
     assert next(c for c in ssh if c["id"] == "read-after-web")["expected"] == ["RUN"]
 
 

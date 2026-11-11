@@ -4,7 +4,7 @@ Results of Notion, the web and the toolbox are wrapped in <untrusted_data> tags,
 that what is inside is information, never an order. This does not stop a determined attacker by itself; it
 raises the bar. `tainted_turn` tells the SSH command judge that the turn has read outside content, so it can
 ask for confirmation when a command looks driven by that content rather than by the owner. It is a hint for
-the judge, not a block by itself (issue #51: it used to stop plain reads after any web search).
+the judge, not a block by itself (it used to stop plain reads after any web search).
 """
 
 from __future__ import annotations

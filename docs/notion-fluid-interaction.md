@@ -2,7 +2,7 @@
 
 This change is proposed for the Hosted Agent. Local tests use simulated Notion,
 model and Responses transports; they do not establish live Playground behavior.
-The requested change to Task 26.2's original approval scope needs validation
+The requested change to the original approval scope needs validation
 against its acceptance criteria before that task can be closed.
 
 ## User experience
@@ -52,7 +52,7 @@ first and stops on an error; protected actions wait for separate consent.
 
 ## Validation still required
 
-Before closing Task 26.2, review the updated policy and test the deployed version
+Before treating this as done, review the updated policy and test the deployed version
 with the owner's explicit authorization: a content-preserving layout edit and
 an append without a confirmation, followed by a deletion refused without effect
 and a separately approved deletion on a disposable page. Independently inspect

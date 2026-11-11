@@ -1,19 +1,19 @@
-# Task 26.2 — Notion direct and conversational authorization
+# Notion direct and conversational authorization
 
 > Historical policy note: the proposed interaction update in
 > [notion-fluid-interaction.md](notion-fluid-interaction.md) supersedes this
 > document's blanket write-confirmation behavior for recognized non-destructive
 > Notion operations. The identity, durable-ledger and hosted validation limits
-> below remain relevant. Review the new policy and revalidate Task 26.2 before
+> below remain relevant. Review the new policy and revalidate this work before
 > marking it complete.
 
 Updated on 23 October 2026 (semantic guardrail refactor). This document separates implemented behavior, local
 simulation, read-only Azure evidence, and validation that still requires an
-authorized deployment. It does not declare Task 26.2 complete.
+authorized deployment. It does not declare the validation complete.
 
 ## Functional source and scope
 
-The [Task 26.2 specification](https://app.notion.com/p/3f1eba09656f81e8a7c3eaea54e256c1)
+The original specification
 requires the Hosted Agent and callback to share an encrypted OAuth store, a stable
 server-side owner identity, and a real Playground consent/read/approved-write/
 refused-write/revocation validation. This implementation prepares those paths for
@@ -312,7 +312,7 @@ phrase map exists only in tests and is never a production interpreter.
 
 `evals/semantic_approval.jsonl` contains representative bilingual consent,
 refusal, typos, quotes, conditions, context changes, batch scope and injection
-cases, plus the short spoken answers to a Notion deletion observed in issue #50
+cases, plus the short spoken answers to a Notion deletion observed in a bug report
 ("Exactement.", "Oui."). `uv run --locked python scripts/evaluate_semantic_approval.py`
 validates only this dataset, without client creation or authentication. After
 separately authorizing inference/authentication, add `--run --trials 5` to call the
@@ -321,7 +321,7 @@ case passes only if all of its trials give the expected decision (pass^k), and
 judge failures (rate limit, timeout) are counted apart. A nonzero exit reports
 disagreement with expected labels.
 
-Measured on 2026-11-07 against `sa2-gpt-6-luna` (issue #50): the previous prompt
+Measured on 2026-11-07 against `sa2-gpt-6-luna` : the previous prompt
 with `reasoning_effort=low` failed 13 to 15 of the 32 original cases at pass^4,
 and answered CLARIFY to a plain "Oui." about one time in two on a deletion; more
 reasoning made it worse (`medium`: 5 of 15 deletion cases failed). The current
@@ -340,7 +340,7 @@ missing tools, uncertain results and credential-safe error handling. Existing
 OAuth, callback, model probe and deployment-filter tests remain part of the suite.
 
 No manual deployment, live Notion write, real OAuth consent, or Playground
-confirmation was performed. A live cloud run must record all five Task 26.2 cases,
+confirmation was performed. A live cloud run must record all five cases of the original specification,
 including stable owner matching and continuity after a real agent restart, before
 closing the task. Keep tokens, consent URLs, secrets and raw SDK payloads out of
 screenshots and logs. Readiness alone is not that evidence.

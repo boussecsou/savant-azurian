@@ -1,4 +1,4 @@
-# Task 26.2 — real Foundry validation, 25 October 2026
+# Notion live validation, 25 October 2026
 
 Status: **in progress**. A real OAuth revocation/reconnection test and deployment
 of the consent correction below are still required before closure.
@@ -13,7 +13,7 @@ of the consent correction below are still required before closure.
   was independently checked: successful, deployed commit `c778ac7`.
 - Tests ran through the real Foundry Responses endpoint as the existing signed-in
   Azure user. They are CLI/REST tests, not a new observation of the Playground UI.
-- Writes were limited to the existing [Notion Sandbox Page](https://app.notion.com/p/3eceba09656f80ce9afde9a578089703).
+- Writes were limited to the existing dedicated Notion sandbox page.
   A separate connected Notion client fetched the page before/after the operations.
 - The preserved original worktree was not edited. Response bodies and resource
   metadata were reduced to selected evidence; no credentials or raw user IDs are
@@ -30,7 +30,7 @@ of the consent correction below are still required before closure.
 | Structured error after token expiry/revocation | No production grant was revoked and no token was replaced or falsified. The real invalid-grant/reconnection path remains untested. | Pending |
 
 The historical email is titled “Rapport du matin — Savant Azurian 2 — 23/10/2026 —
-PR #10, agent v18 et Notion OAuth réel”, sent on 23 October at 13:21 UTC.
+an earlier pull request, agent v18 et Notion OAuth réel”, sent on 23 October at 13:21 UTC.
 
 ## Additional real checks
 
@@ -95,7 +95,6 @@ changed by this narrow consent correction.
 
 ## References
 
-- [Task 26.2](https://app.notion.com/p/3f1eba09656f81e8a7c3eaea54e256c1)
 - [Foundry endpoint authorization](https://learn.microsoft.com/en-us/azure/foundry/agents/how-to/configure-agent)
 - [Foundry sessions and conversation transport](https://learn.microsoft.com/en-us/azure/foundry/agents/how-to/manage-hosted-sessions)
 - [Notion OAuth token lifecycle and invalid-grant handling](https://developers.notion.com/guides/mcp/build-mcp-client)
