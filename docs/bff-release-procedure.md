@@ -1,107 +1,52 @@
-# Corrections BFF : intégration et déploiement
+# Rolling out a new backend image
 
-État vérifié le 20 octobre 2026. Cette PR fournit le durcissement du BFF,
-ses tests et sa documentation. La publication ACR et le déploiement ACA restent
-manuels ; ouvrir ou fusionner cette PR ne met pas à jour le BFF déployé.
+Publishing a backend image to the registry does **not** update the running Container App. This is the procedure to publish a new image and roll it out, as a deliberate step. The mechanics of publication are in [Publishing the backend image](publish-bff-workflow.md); the delivery rules are in [component delivery](component-cicd.md).
 
-## Changements préparés
+## What happens when a change reaches `main`
 
-- `oauth_callback.py` et `bff_logging.py` : logs à événements fixes,
-  sans query strings, valeurs OAuth, en-têtes ou traces d'exception brutes.
-- `scripts/should_deploy_agent.py` : exclusion explicite de `bff_logging.py`
-  et du script de filtrage lui-même pour la CD Foundry.
-- Tests de filtrage, tests OAuth/logs et documentation de validation.
-
-Le code partagé (`notion_oauth.py`, `oauth_runtime.py`, `oauth_key.py`), le
-runtime agent et les dépendances continuent de déclencher Foundry s'ils changent.
-Un fichier inconnu ou une comparaison impossible déclenche aussi Foundry par
-précaution. Une CD Foundry lancée manuellement force toujours ce déploiement.
-
-## Ce qui se passera après intégration sur main
-
-| Étape | Effet pour ces corrections seules |
+| Step | Effect for a backend-only change |
 | --- | --- |
-| PR vers `main` | Tests Python, construction Docker et readiness synthétique ; aucun déploiement Azure |
-| Fusion squash vers `main` | Nouvelle CI sur le SHA intégré |
-| CD Foundry automatique après CI verte | Déploiement ignoré par le filtre |
-| Publish BFF automatique | Ignoré tant que `BFF_AUTO_PUBLISH` reste absent ou différent de `true` |
-| Publish BFF manuel | Publication du SHA validé dans ACR si les entrées BFF ont changé |
-| Azure Container Apps | Reste sur `v1` jusqu'à une mise à jour explicite de l'image |
+| Pull request to `main` | Python tests, Docker build and synthetic readiness; no Azure deployment |
+| Squash merge to `main` | A new CI on the merged SHA |
+| Automatic agent CD after a green CI | Deployment skipped by the filter (the agent's runtime did not change) |
+| Automatic Publish BFF | Skipped while `BFF_AUTO_PUBLISH` is absent or not `true` |
+| Manual Publish BFF | Publishes the validated SHA to the registry if the backend inputs changed |
+| Azure Container Apps | Stays on its current image until you update it explicitly |
 
-L'absence de déploiement Foundry suppose que la PR contient uniquement les
-corrections BFF, les exclusions, leurs tests et la documentation. Un changement
-partagé ajouté à la même PR peut légitimement déclencher Foundry.
-Le filtre actuel compare `HEAD^..HEAD` : privilégier une fusion **squash**.
-Il ne garantit pas l'analyse de tous les commits d'un push multiple.
+Shared code (`notion_oauth.py`, `oauth_runtime.py`, `oauth_key.py`), the agent runtime and the dependencies still trigger the agent deployment if they change. An unknown file or an impossible comparison also triggers it, as a precaution. A manually started CD always forces the deployment. Prefer **squash** merges: the filter compares `HEAD^..HEAD` and does not guarantee analysis of every commit of a multi-commit push.
 
-## Procédure pour déployer le BFF corrigé
+## Procedure
 
-1. Sur la branche dédiée de cette PR issue de `main`, attendre la CI puis
-   fusionner par squash après revue.
-   Ne pas inclure les documents personnels déjà préparés dans l'espace local.
-2. Attendre la CI **push sur main** du commit fusionné. Le workflow de
-   publication exige une CI verte sur ce SHA exact.
-3. Dans GitHub Actions, sélectionner **Publish BFF → Run workflow → main**,
-   avec `publish_v1=false` (défaut). Ne pas relancer **CD** pour publier le BFF.
-   Équivalent CLI :
+1. After review, merge the pull request by squash.
+2. Wait for the **push CI on `main`** of the merged commit. The publication workflow requires a green CI on that exact SHA.
+3. In GitHub Actions, select **Publish BFF → Run workflow → main**, with `publish_v1=false` (the default). Do not rerun **CD** to publish the backend. CLI equivalent:
 
    ```bash
-   gh workflow run publish-bff.yml --repo boussecsou/savant-azurian --ref main
+   gh workflow run publish-bff.yml --repo <owner>/<repo> --ref main
    ```
 
-4. Attendre la réussite des jobs `plan`, `publish`, `checkpoint`. Le résumé
-   du run et l'artefact `bff-publication.json` donnent le SHA et le digest.
-   Le tag produit est `sa2-bff:sha-<SHA complet>`, immuable. `v1` ne doit
-   pas être réécrit. Si aucun input BFF n'a changé depuis le checkpoint,
-   `publish` peut être ignoré : vérifier alors l'image correspondant au code voulu.
-5. Après demande explicite de déploiement, remplacer l'image utilisée par ACA
-   avec le digest vérifié du run. Cette commande crée une nouvelle révision ;
-   la configuration actuelle envoie le trafic vers la dernière révision.
-   Remplacer la valeur fictive avant exécution :
+4. Wait for the jobs `plan`, `publish` and `checkpoint` to succeed. The run summary and the `bff-publication.json` artifact give the SHA and the digest. The tag produced is `sa2-bff:sha-<full SHA>`, immutable. `v1` must not be rewritten. If no backend input changed since the checkpoint, `publish` can be skipped: then check the image that corresponds to the code you want.
+5. When you decide to roll it out, replace the image Container Apps uses with the run's verified digest. The command creates a new revision; with the usual configuration traffic goes to the latest revision. Replace the placeholder first:
 
    ```bash
-   BFF_DIGEST='sha256:REMPLACER_PAR_LE_DIGEST_VERIFIE'
-   az containerapp update -g rg-savant-azurian-2 -n ca-sa2-bff \
-     --image "acrsavantazurian2-bkf5enaaagb4aygm.azurecr.io/sa2-bff@$BFF_DIGEST"
+   BFF_DIGEST='sha256:REPLACE_WITH_THE_VERIFIED_DIGEST'
+   az containerapp update -g <resource-group> -n <app-name> \
+     --image "<registry-login-server>/sa2-bff@$BFF_DIGEST"
+   azd env set BFF_IMAGE "<registry-login-server>/sa2-bff@$BFF_DIGEST"   # so a later `azd provision` keeps it
    ```
 
-6. Vérifier la révision et le contrôle de santé :
+6. Check the revision and the health probe:
 
    ```bash
-   az containerapp show -g rg-savant-azurian-2 -n ca-sa2-bff \
+   az containerapp show -g <resource-group> -n <app-name> \
      --query '{state:properties.provisioningState,latest:properties.latestRevisionName,ready:properties.latestReadyRevisionName,image:properties.template.containers[0].image}'
-   curl --fail --show-error \
-     https://<bff-fqdn>/readiness
+   curl --fail --show-error https://<backend-fqdn>/readiness
    ```
 
-   Attendu : provisioning réussi, dernière révision prête, image au bon digest,
-   HTTP 200 et `{"status":"ready"}`. Refaire le test de logs avec des valeurs
-   fictives ; ne pas tester en imprimant de vrais tokens ou la clé Fernet.
+   Expected: provisioning succeeded, the latest revision ready, the image at the right digest, HTTP 200 and `{"status":"ready"}`. Redo the log checks with fictitious values; never test by printing real tokens or the Fernet key.
 
-Le workflow de publication utilise OIDC et les autorisations ACR existantes.
-La mise à jour ACA utilise la session Azure autorisée ; elle n'ajoute aucun rôle
-à l'identité GitHub. Aucun provisioning Foundry n'est nécessaire.
-Les identités, secrets Key Vault, variables, ingress et scaling ACA sont conservés
-par cette mise à jour de l'image. Consulter [l'audit des logs](bff-logging-audit.md)
-pour les preuves, les limites et les validations locales.
+The publication workflow uses OIDC and the registry roles that the template grants. The Container Apps update uses your authorized Azure session; it adds no role to the GitHub identity. No Foundry provisioning is needed. The identities, Key Vault secrets, variables, ingress and scaling of the app are kept by an image update. See [the log audit](bff-logging-audit.md) for the evidence, the limits and the local checks.
 
-## Validation des exclusions
+## First rollout of a new environment
 
-Commande exécutée :
-
-```bash
-/tmp/sa2-bff-audit-venv/bin/python -m pytest -q \
-  tests/test_deploy_changes.py tests/test_bff_logging.py \
-  tests/test_oauth_runtime.py tests/test_notion_oauth.py
-```
-
-**50 tests passent.** Les tests couvrent l'ensemble des fichiers de correction,
-les mélanges BFF/code partagé et le comportement prudent sur les chemins inconnus.
-Le filtrage appliqué à tous les fichiers actuellement modifiés ou nouveaux retourne
-`false` pour le déploiement Foundry automatique. `git diff --check` passe.
-Le filtre de publication BFF présent sur GitHub reconnaît tout `src/savant/` :
-les deux fichiers Python du BFF seront donc bien considérés comme des entrées modifiées.
-
-La suite complète a également été exécutée sur la branche de cette PR issue
-de `main` : **142 tests passent**, avec les dépendances verrouillées et `jq`
-disponible. Le build Docker et son smoke test seront exécutés par la CI GitHub.
+The Container App starts on a public placeholder image. The first rollout replaces it with an image you build, for example from the public repository (`az acr build … https://github.com/<owner>/<repo>.git#main`). The [deployment guide](deployment.md#8-publish-the-backend-image-and-roll-it-out) has the exact commands, including why you must not run `az acr build .` from a local checkout.

@@ -1,99 +1,49 @@
-# Audit des logs BFF — 20 octobre 2026
+# Backend log audit, 20 October 2026
 
-Périmètre : `ca-sa2-bff`, `cae-savant-azurian-2`, code Python/Docker,
-logs récents ACA, deux workspaces Log Analytics accessibles et quatre fichiers
-locaux de diagnostic. Aucun secret réel n'a été récupéré pour les comparer.
-Aucune donnée historique n'a été supprimée et aucune attribution RBAC ajoutée.
+Scope: the backend Container App and its environment, the Python and Docker code, the recent Container Apps logs, two accessible Log Analytics workspaces and four local diagnostic files. No real secret was retrieved for comparison. No historical data was deleted and no RBAC assignment was added.
 
-## Résultats Azure
+## Azure findings
 
-- Révision active : `ca-sa2-bff--0000001`, image `sa2-bff:v1`, entrée Docker
-  `python -m savant.oauth_callback`, sans surcharge de commande.
-- Inspection dans le conteneur : `UVICORN_ACCESS_LOG_DISABLED=True`.
-- Aucun diagnostic setting sur l'app ou l'environnement ; destination de logs
-  de l'environnement et configuration Log Analytics nulles.
-- Dapr désactivé, aucun export OpenTelemetry configuré dans l'environnement,
-  aucune variable App Insights/OTEL dans le conteneur. Le point d'entrée BFF
-  n'initialise aucun SDK de télémétrie. Les dépendances OTEL installées dans
-  l'image ne constituent pas, seules, une activation de l'instrumentation.
-- HTTPS imposé ; les variables secrètes n'ont été inspectées que par leur nom.
-- Les métriques plateforme restent disponibles : `Requests`, unité `Count`,
-  une série retournée sur les dernières 24 h. Aucun réglage de métrique changé.
+- Active revision: the `v1` image, Docker entry point `python -m savant.oauth_callback`, with no command override.
+- Inspection inside the container: `UVICORN_ACCESS_LOG_DISABLED=True`.
+- No diagnostic setting on the app or the environment; the environment's log destination and Log Analytics configuration were null.
+- Dapr disabled, no OpenTelemetry export configured in the environment, no Application Insights or OTEL variable in the container. The backend entry point initializes no telemetry SDK. The OTEL dependencies installed in the image are not, by themselves, an activation of instrumentation.
+- HTTPS enforced; secret variables were inspected by name only.
+- Platform metrics stay available: `Requests`, unit `Count`, one series returned over the last 24 h. No metric setting was changed.
 
-Les logs HTTP d'ingress peuvent contenir le chemin **avec la query string** :
-ne pas activer `ContainerAppHTTPLogs` pour cet environnement OAuth sans dispositif
-validé de suppression avant stockage. La configuration actuelle ne les exporte pas.
-Référence : [schéma des logs ACA](https://learn.microsoft.com/en-us/azure/container-apps/log-monitoring).
+Ingress HTTP logs can contain the path **with the query string**: do not enable `ContainerAppHTTPLogs` for this OAuth environment without a validated way to remove it before storage. The current configuration does not export them. Reference: [Container Apps log schema](https://learn.microsoft.com/en-us/azure/container-apps/log-monitoring).
 
-## Risques et corrections du code
+## Risks and code fixes
 
-L'accès HTTP était déjà désactivé. Les réponses HTML et erreurs OAuth étaient
-également génériques. En revanche, le processus n'imposait aucune protection globale
-contre les messages de dépendances, avertissements Python ou exceptions Uvicorn.
-Les erreurs inattendues du callback étaient absorbées sans événement exploitable.
+HTTP access logging was already disabled. The HTML responses and OAuth errors were also generic. The process, however, imposed no global protection against dependency messages, Python warnings or Uvicorn exceptions. Unexpected callback errors were swallowed without a usable event.
 
-`src/savant/bff_logging.py` impose désormais une sortie à événements fixes :
-aucun formatage des arguments, messages tiers, extras, chemins, exceptions ou
-stack traces. Le logger d'accès est filtré même s'il est activé accidentellement.
-Les avertissements Python passent par cette configuration. Les logs tiers
-existants sont désactivés et les nouveaux logs propagés passent par le filtre.
-Les avertissements/erreurs propagés restent représentés par des événements génériques.
+`src/savant/bff_logging.py` now imposes fixed-event output: no formatting of arguments, third-party messages, extras, paths, exceptions or stack traces. The access logger is filtered even if it is accidentally enabled. Python warnings go through this configuration. Existing third-party loggers are disabled and new propagated logs go through the filter. Propagated warnings and errors stay represented by generic events.
 
-`oauth_callback.py` configure cette protection avant de construire le service,
-transmet la même configuration à Uvicorn et produit des événements fixes de
-succès, refus, panne et échec de démarrage. Les métriques Azure ne dépendent pas
-de cette configuration Python. Ce durcissement concerne uniquement le BFF.
+`oauth_callback.py` configures this protection before building the service, passes the same configuration to Uvicorn and emits fixed events for success, refusal, outage and startup failure. Azure metrics do not depend on this Python configuration. This hardening concerns the backend only.
 
-## Recherche historique
+## Historical search
 
-- Logs récents : 6 lignes console et 24 lignes système retournées, aucun motif
-  de code/query OAuth, cookie, Authorization, token, secret nommé ou JWT détecté.
-  La requête demande les 300 dernières lignes ; ce n'est pas un export exhaustif.
-- Les deux workspaces (rétention configurée : 30 jours) ne retournent aucune
-  ligne faisant référence à l'app ou à son environnement sur les 30 derniers jours.
-  La recherche utilise les noms BFF/CAE et agrège les résultats côté service.
-- Quatre fichiers locaux : 1 985 lignes. Les 30 occurrences du mot Authorization
-  sont 20 en-têtes déjà masqués, 6 références RBAC et 4 noms de SDK dans User-Agent.
-  Aucun candidat de secret non masqué confirmé dans cette recherche.
-- Les résultats conservés dans `/tmp/sa2-bff-log-audit/` sont des configurations
-  filtrées et des compteurs ; les messages historiques bruts n'y sont pas copiés.
+- Recent logs: 6 console lines and 24 system lines returned, with no OAuth code or query pattern, cookie, Authorization, token, named secret or JWT detected. The query asks for the last 300 lines; it is not an exhaustive export.
+- The two workspaces (configured retention: 30 days) return no line referring to the app or its environment over the last 30 days. The search uses the backend and environment names and aggregates the results on the service side.
+- Four local files: 1,985 lines. The 30 occurrences of the word Authorization are 20 already masked headers, 6 RBAC references and 4 SDK names in User-Agent. No confirmed unmasked secret candidate in this search.
+- The results kept in the audit's scratch folder are filtered configurations and counters; the raw historical messages were not copied there.
 
 ## Validation
 
-Commande :
+Command:
 
 ```bash
-/tmp/sa2-bff-audit-venv/bin/python -m pytest -q \
-  tests/test_bff_logging.py tests/test_oauth_runtime.py tests/test_notion_oauth.py
+python -m pytest -q tests/test_bff_logging.py tests/test_oauth_runtime.py tests/test_notion_oauth.py
 ```
 
-**44 tests passent.** Tests Uvicorn réels sur localhost avec uniquement des
-valeurs fictives : succès, refus OAuth, panne du callback, exception non interceptée,
-logs de dépendances, avertissement Python et échec de démarrage. Les faux codes,
-states, tokens, cookies, Authorization et contenus d'exception sont absents de
-la sortie ; les événements de succès/erreur restent présents. `git diff --check` passe.
+**44 tests passed.** Real Uvicorn tests on localhost with fictitious values only: success, OAuth refusal, callback outage, uncaught exception, dependency logs, Python warning and startup failure. The fake codes, states, tokens, cookies, Authorization values and exception contents are absent from the output; the success and error events stay present.
 
-Test public sur `/readiness` avec query string, Authorization et cookie fictifs :
-HTTP **200**, `{"status":"ready"}`, aucun marqueur synthétique dans les logs console
-retournés. Ce contrôle ne constitue pas un test OAuth réel ni une preuve sur tous
-les journaux internes Microsoft.
+A public test on `/readiness` with a fictitious query string, Authorization and cookie: HTTP **200**, `{"status":"ready"}`, no synthetic marker in the returned console logs. This check is not a real OAuth test, nor proof about all of Microsoft's internal journals.
 
-## État d'application et limites
+## Application status and limits
 
-**Le durcissement Python est corrigé et testé localement, mais pas encore déployé.**
-L'inspection du conteneur confirme `HARDENED_LOGGING_MODULE_PRESENT=False`.
-Aucune configuration Azure dangereuse active n'a été trouvée à modifier.
-Le déploiement d'une nouvelle image nécessite une demande explicite selon le
-cadre d'apprentissage d'`AGENTS.md`.
+**The Python hardening was fixed and tested locally, but not yet deployed at the time of the audit.** Inspection of the container confirmed `HARDENED_LOGGING_MODULE_PRESENT=False`. No dangerous active Azure configuration was found to change. Deploying a new image needs an explicit request under the learning framework of [AGENTS.md](../AGENTS.md).
 
-Après fusion et CI verte sur `main`, utiliser **Publish BFF** manuellement
-pour construire et publier l'image corrigée dans ACR. Mettre ensuite à jour
-`ca-sa2-bff` explicitement avec le digest vérifié ; vérifier la nouvelle révision,
-`/readiness` et les logs synthétiques. Voir [la procédure complète](bff-release-procedure.md).
-Aucun workflow actuel ne met à jour ACA automatiquement.
+After merge and a green CI on `main`, use **Publish BFF** manually to build and publish the fixed image to the registry. Then update the Container App explicitly with the verified digest; check the new revision, `/readiness` and the synthetic logs. See [the full procedure](bff-release-procedure.md). No current workflow updates Container Apps automatically.
 
-La recherche historique dépend des données accessibles et retenues ; elle ne prouve
-pas l'absence absolue de fuite passée. Les futures impressions directes sur stdout,
-handlers personnalisés ou instrumentations/exporteurs indépendants devront être
-revus séparément. Les événements d'erreur génériques limitent volontairement le
-diagnostic détaillé. Aucun nouveau stockage durable de logs n'a été activé.
+The historical search depends on the data that is accessible and retained; it does not prove the absolute absence of a past leak. Future direct prints to stdout, custom handlers or independent instrumentations and exporters must be reviewed separately. The generic error events deliberately limit detailed diagnosis. No new durable log storage was enabled.

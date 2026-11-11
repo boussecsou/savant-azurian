@@ -1,44 +1,29 @@
-# Application Insights : correction du 2 octobre 2026
+# Application Insights: the 2 October 2026 fix
 
-## Diagnostic
+## Diagnosis
 
-Le Hosted Agent v10 répondait correctement (`/readiness` et `/responses` en
-HTTP 200), mais les exports OpenTelemetry et QuickPulse étaient refusés avec
-`Forbidden`. Le rôle `Monitoring Metrics Publisher` était présent pour
-l'identité du projet, absent pour l'identité du Hosted Agent. La propriété
-`DisableLocalAuth` n'était pas configurée sur Application Insights.
+Hosted agent version 10 answered correctly (`/readiness` and `/responses` returned HTTP 200), but its OpenTelemetry and QuickPulse exports were refused with `Forbidden`. The `Monitoring Metrics Publisher` role was present for the project identity and absent for the hosted agent's identity. The `DisableLocalAuth` property was not set on Application Insights.
 
-## Correction Azure réalisée sur demande
+## Azure fix, made on request
 
-- Attribution de `Monitoring Metrics Publisher` à l'identité du Hosted Agent,
-  uniquement sur `fp-savant-azurian-2-resource-appinsights`.
-- Configuration de cette ressource avec `DisableLocalAuth=true`, conformément
-  au parcours Entra recommandé pour les traces Foundry.
-- Aucun changement de code, de modèle ni redéploiement nécessaire.
+- `Monitoring Metrics Publisher` was granted to the hosted agent's identity, on the Application Insights resource only.
+- That resource was configured with `DisableLocalAuth=true`, following the Entra path recommended for Foundry traces.
+- No code change, model change or redeployment was needed.
 
-## Vérification réelle
+## Real verification
 
-Deux invocations explicites de la v10 ont répondu `OK`. Après la correction
-complète, Log Analytics contient, pour l'identifiant d'opération exact du
-second test, 1 `AppRequests`, 4 `AppDependencies` et 15 `AppTraces`.
-Les logs récents de cette session ne contiennent plus `Forbidden` ni
-`Exception occurred while publishing live metrics`. Cela valide l'ingestion
-et l'absence des erreurs observées sur cette session ; le panneau graphique
-Live Metrics n'a pas été inspecté directement.
+Two explicit invocations of version 10 answered `OK`. After the complete fix, Log Analytics holds, for the exact operation id of the second test, 1 `AppRequests`, 4 `AppDependencies` and 15 `AppTraces`. The recent logs of that session no longer contain `Forbidden` or `Exception occurred while publishing live metrics`. This validates ingestion and the absence of the observed errors for that session; the Live Metrics graphical panel was not inspected directly.
 
-## Accès et piège de version
+## Lesson for the template
 
-La session Azure habituelle est authentifiée et utilisable hors sandbox.
-Le répertoire `/tmp/sa2-azure-config` n'est pas authentifié. Dans la sandbox,
-le répertoire Azure habituel est en lecture seule, et azd ne peut pas ouvrir
-son serveur interne : utiliser l'exécution approuvée hors sandbox sans copier
-les credentials.
+The role is something the hosted agent needs after its first deployment, because its identity only exists then. `scripts/setup/grant-agent-roles.sh` grants it, together with the agent's other roles. If telemetry from the agent is missing, check this role first.
 
-L'environnement azd local référence encore la v3. Les tests de la v10 ont
-utilisé `--version 10 --protocol responses` et les lectures de logs ont ciblé
-explicitement l'identifiant de session renvoyé par cette invocation.
-Ne pas interpréter `azd ai agent show` sans vérifier ce contexte.
+## Access, and a version trap
 
-## Référence
+The usual Azure session is authenticated and usable outside a sandbox. In a sandbox the usual Azure configuration directory is read-only and `azd` cannot open its internal server: use the approved execution outside the sandbox, without copying credentials.
 
-[Authentification Entra pour les traces Foundry](https://learn.microsoft.com/en-us/azure/foundry/observability/how-to/trace-ingestion-entra-authentication)
+A local `azd` environment can still reference an older agent version. The tests of version 10 used `--version 10 --protocol responses`, and the log reads targeted the session id returned by that invocation explicitly. Do not interpret `azd ai agent show` without checking that context.
+
+## Reference
+
+[Entra authentication for Foundry traces](https://learn.microsoft.com/en-us/azure/foundry/observability/how-to/trace-ingestion-entra-authentication)

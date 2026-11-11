@@ -1,56 +1,30 @@
-# Modèle Savant : GPT-6 Luna
+# The Savant model: GPT-6 Luna
 
-La migration du 8 octobre 2026 réutilise le déploiement Azure OpenAI existant
-`sa2-gpt-6-luna` dans `azai-savant-azurian-2` : modèle `gpt-6-luna`, version
-`2026-09-22`, Global Standard, capacité 150. Elle ne provisionne aucune ressource.
+The migration of 8 October 2026 moved to the `gpt-6-luna` model: version `2026-09-22`, Global Standard, capacity 150. It is the default of the Bicep template (`MODEL_NAME`, `MODEL_VERSION`, `MODEL_SKU`, `MODEL_CAPACITY`, see the [configuration reference](configuration.md#azd-environment-inputs)). The history of the choice is in [ADR-0004](adr/0004-reasoning-model-reference.md) and [ADR-0006](adr/0006-model-fallback-and-change-control.md).
 
-## Configuration et authentification
+## Configuration and authentication
 
-La variable GitHub `FOUNDRY_MODEL_NAME` vaut `sa2-gpt-6-luna`. La CD la transmet
-à `AZURE_AI_MODEL_DEPLOYMENT_NAME` dans l'environnement azd, puis `azure.yaml`
-l'injecte dans la nouvelle version du Hosted Agent. Modifier la variable seule
-ne change pas les versions déjà publiées. Le pipeline garde OIDC et son contrôle
-de CI réussie sur le SHA exact de `main`.
+The deployment name is the value of `AZURE_AI_MODEL_DEPLOYMENT_NAME`. The CD passes the GitHub variable of the same name to the `azd` environment, then `azure.yaml` injects it into the new version of the Hosted Agent. Changing the variable alone does not change the versions already published. The pipeline keeps OIDC and its check of a green CI on the exact SHA of `main`.
 
-Pour une exécution locale, utiliser les mêmes valeurs :
+For a local run, use the same values:
 
 ```env
-AZURE_OPENAI_BASE_URL=https://azai-savant-azurian-2.openai.azure.com/openai/v1/
-AZURE_AI_MODEL_DEPLOYMENT_NAME=sa2-gpt-6-luna
+AZURE_OPENAI_BASE_URL=https://<account>.openai.azure.com/openai/v1/
+AZURE_AI_MODEL_DEPLOYMENT_NAME=<deployment-name>
 ```
 
-L'URL complète `/openai/responses?api-version=2025-04-01-preview` affichée au
-portail n'est pas une URL de base pour `ChatOpenAI`. Le client utilise le chemin
-v1 `/responses`, sans paramètre `api-version`.
+The full URL `/openai/responses?api-version=2025-04-01-preview` shown in the portal is not a base URL for `ChatOpenAI`. The client uses the v1 path `/responses`, without an `api-version` parameter.
 
-Le bearer token conserve le scope `https://ai.azure.com/.default` et
-`DefaultAzureCredential` : compte développeur local, Managed Identity du Hosted
-Agent dans Azure. L'identité existante de `sa2-agent` possède déjà le rôle
-`Cognitive Services OpenAI User` sur `azai-savant-azurian-2` ; ce scope couvre
-aussi le nouveau déploiement dans la même ressource. Aucun rôle supplémentaire
-ni secret n'est nécessaire.
+The bearer token keeps the scope `https://ai.azure.com/.default` and `DefaultAzureCredential`: the local developer account, or the Hosted Agent's managed identity in Azure. The agent's identity needs the `Cognitive Services OpenAI User` role on the account; that scope also covers a new deployment in the same resource. No additional role and no secret is needed.
 
-## Responses et historique
+## Responses and history
 
-`build_model()` utilise explicitement `use_responses_api=True` et
-`output_version="responses/v1"`. GPT-6 Luna limite le function calling via
-Chat Completions au raisonnement `none` ; Responses permet de conserver le
-raisonnement par défaut et les tools LangGraph.
+`build_model()` explicitly uses `use_responses_api=True` and `output_version="responses/v1"`. GPT-6 Luna limits function calling through Chat Completions to reasoning `none`; Responses keeps the default reasoning and the LangGraph tools.
 
-L'historique reste géré par LangGraph. Les requêtes modèle ont `store=False`
-et demandent `reasoning.encrypted_content` pour rejouer les éléments de
-raisonnement après un tool ou une restauration de checkpoint. Le client
-n'utilise pas `previous_response_id` côté modèle. Le `previous_response_id`
-du protocole public du Hosted Agent reste géré par le serveur Responses.
+The history stays managed by LangGraph. Model requests have `store=False` and ask for `reasoning.encrypted_content`, to replay the reasoning items after a tool or a checkpoint restore. The client does not use `previous_response_id` on the model side. The `previous_response_id` of the Hosted Agent's public protocol stays managed by the Responses server.
 
-Les tests passent par les vrais clients OpenAI/LangChain avec un transport HTTP
-simulé, en synchrone et asynchrone : réponse, tool `echo`, reprise du modèle et
-relecture d'un historique sérialisé. La validation réelle utilise le modèle
-existant puis le smoke test de la CD ; elle ne prouve pas l'accès réel à Notion.
+The tests go through the real OpenAI and LangChain clients with a simulated HTTP transport, synchronous and asynchronous: an answer, the `echo` tool, resuming the model and rereading a serialized history. The real validation uses the existing model, then the CD smoke test; it does not prove real access to Notion.
 
-En cas de retour à l'ancien modèle, rétablir `FOUNDRY_MODEL_NAME=gpt-5.6-luna`
-puis publier explicitement une nouvelle version avec le pipeline existant.
-Le workflow ne fait pas de rollback automatique.
+To go back to the previous model, set `AZURE_AI_MODEL_DEPLOYMENT_NAME` to the earlier deployment, then explicitly publish a new version with the existing pipeline. The workflow does no automatic rollback.
 
-Références : [authentification Entra Azure OpenAI](https://learn.microsoft.com/en-us/azure/foundry-classic/openai/how-to/managed-identity),
-[GPT-6 Luna et function calling](https://developers.openai.com/api/docs/models/gpt-6-luna).
+References: [Azure OpenAI Entra authentication](https://learn.microsoft.com/en-us/azure/foundry-classic/openai/how-to/managed-identity), [GPT-6 Luna and function calling](https://developers.openai.com/api/docs/models/gpt-6-luna).

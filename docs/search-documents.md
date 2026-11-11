@@ -1,187 +1,126 @@
-# Documents par projet dans Azure AI Search (tâche 37, PR 1)
+# Per-project documents in Azure AI Search
 
-Cette PR crée le **pipeline d'ingestion** : on dépose un fichier dans Blob Storage, et Azure AI Search le
-découpe, le vectorise et l'indexe tout seul. Elle ne contient que des scripts : rien n'est déployé et le
-runtime ne change pas. La recherche (outil de l'agent), l'upload (BFF) et l'interface viennent dans les
-PR suivantes. Contexte : SDD-005 §5.3 (D5), §6, et `docs/azure-ai-search-project-scoping.md`.
+A file dropped into Blob Storage is chunked, vectorized and indexed by Azure AI Search on its own. This page describes the ingestion pipeline, how the agent searches, how the backend uploads, lists and deletes, and the interface. Design context: [SDD-005](design/sdd-005-product-model-memory-and-interface.md) (section 5.3, D5, section 6), [ADR-0021](adr/0021-per-project-document-retrieval.md) and the [search scoping notes](azure-ai-search-project-scoping.md).
 
-## Le principe : la vectorisation intégrée
+## The principle: integrated vectorization
 
-Analogie : une imprimerie. Tu déposes un manuscrit (le PDF) à l'accueil (le conteneur Blob). Le chef
-d'atelier (l'**indexeur**) le prend, le découpe en feuillets (**Text Split**), fait traduire chaque feuillet
-en « coordonnées GPS du sens » (**embedding**, `text-embedding-3-small`) et range chaque feuillet dans le
-grand classeur (**l'index**), avec l'étiquette de son projet.
+An analogy: a print shop. You hand a manuscript (the PDF) to the front desk (the Blob container). The workshop manager (the **indexer**) takes it, cuts it into sheets (**Text Split**), has each sheet translated into "GPS coordinates of meaning" (an **embedding**, `text-embedding-3-small`) and files each sheet in the big cabinet (the **index**), with the label of its project.
 
-| Objet | Nom | Rôle |
+| Object | Name | Role |
 | --- | --- | --- |
-| Source de données | `sa2-docs-blob` | Le conteneur `documents`, lu avec l'**identité managée** du service Search (aucune clé). |
-| Skillset | `sa2-docs-skillset` | Découpe (2 000 caractères, chevauchement de 300) puis embedding de chaque morceau. Les *index projections* écrivent un document de recherche par morceau. |
-| Index | `sa2-docs` | Un document = un morceau : `chunk`, `chunk_vector`, `title`, `project_id`, `document_id`, `parent_id`. Recherche hybride, ranker sémantique, et un **vectorizer** qui vectorise aussi la question. |
-| Indexeur | `sa2-docs-indexer` | Lance le tout, une fois à la création puis toutes les 30 minutes. Le BFF le relancera après chaque upload. |
+| Data source | `sa2-docs-blob` | The `documents` container, read with the search service's **managed identity** (no key). |
+| Skillset | `sa2-docs-skillset` | Splits (2,000 characters, 300 overlap), then embeds each chunk. The *index projections* write one search document per chunk. |
+| Index | `sa2-docs` | One document is one chunk: `chunk`, `chunk_vector`, `title`, `project_id`, `document_id`, `parent_id`. Hybrid search, the semantic ranker, and a **vectorizer** that also vectorizes the question. |
+| Indexer | `sa2-docs-indexer` | Runs everything, once at creation and then every 30 minutes. The backend runs it again after each upload. |
 
-**Isolation par projet.** Chaque blob portera, depuis le BFF, les métadonnées `project_id` et `document_id`.
-Elles sont recopiées sur chaque morceau. `project_id` est *filterable* dès la première version : un champ
-existant ne peut pas le devenir plus tard. L'agent ajoutera toujours `project_id eq '<projet>'` lui-même,
-jamais le modèle (SDD-005 D6).
+**Isolation by project.** The backend gives each blob the metadata `project_id` and `document_id`. They are copied onto every chunk. `project_id` is *filterable* from the first version of the index: an existing field cannot become filterable later. The agent always adds `project_id eq '<project>'` itself, never the model (SDD-005 D6).
 
-**Suppression.** La détection de suppression Blob ne s'applique pas à l'indexation « un vers plusieurs »
-(doc Microsoft). Le BFF supprimera donc d'abord les morceaux (`document_id eq '<id>'`), puis le blob (D8).
+**Deletion.** Blob deletion detection does not apply to one-to-many indexing (Microsoft documentation). The backend therefore deletes the chunks first (`document_id eq '<id>'`), then the blob (D8).
 
-**Types de fichiers (v1).** PDF texte, DOCX, PPTX, TXT, MD. Les images et les PDF scannés demandent l'OCR
-(un skill facturé) : ce sera plus tard. Limites en Basic : 16 Mo par fichier, 512 000 caractères extraits.
+**File types (v1).** Text PDF, DOCX, PPTX, TXT, MD. Images and scanned PDFs need OCR (a billed skill): later. Limits on the Basic tier: 16 MB per file, 512,000 extracted characters.
 
-## Pourquoi pas l'outil « AI Search » de Foundry ?
+## Why not Foundry's "AI Search" tool?
 
-| Option | Écartée parce que |
+| Option | Rejected because |
 | --- | --- |
-| Outil Azure AI Search de la Toolbox | Son filtre est fixe pour toutes les requêtes : impossible d'imposer le projet du tour. |
-| Foundry IQ (knowledge base, `knowledge_base_retrieve`) | En preview ; les arguments viennent du modèle ; un appel LLM de plus. |
-| Foundry IQ, source « fichiers » | En preview, sans isolation par projet. |
+| The Azure AI Search tool of the Toolbox | Its filter is fixed for every query: the project of the turn cannot be imposed. |
+| Foundry IQ (knowledge base, `knowledge_base_retrieve`) | In preview; the arguments come from the model; one more model call. |
+| Foundry IQ, "files" source | In preview, with no isolation by project. |
 
-On garde donc l'ingestion **native Azure**. La recherche est un petit outil à nous, avec le filtre imposé
-par le serveur (PR 2).
+Ingestion therefore stays **native Azure**. Search is a small tool of our own, with the filter imposed by the server.
 
-## Étapes manuelles (Portail, par le propriétaire)
+## Manual steps (portal, by the owner)
 
-1. **Déploiement d'embeddings** : déjà présent. `text-embedding-3-small` (GlobalStandard, 120 000 TPM) est
-   déployé sur la ressource Foundry `fp-savant-azurian-2-resource`. Son point d'accès
-   `https://fp-savant-azurian-2-resource.services.ai.azure.com` est accepté par le skill et le vectorizer
-   (domaines pris en charge : `openai.azure.com`, `services.ai.azure.com`, `cognitiveservices.azure.com`).
-2. **Conteneur** : sur `stsavantazurian2`, créer `documents` (accès privé).
-3. **Service `ais-sa2`** :
-   - *Identity* : activer l'identité managée **système** ;
-   - *Keys* : contrôle d'accès « **Role-based access control** » (ou « Both »).
-4. **Rôles** (*Access control (IAM)*) :
+The Bicep template creates the resources and most roles (see the [deployment guide](deployment.md)). On a hand-built setup:
 
-| Qui | Rôle | Sur | Pourquoi |
+1. **Embedding deployment.** `text-embedding-3-small` (GlobalStandard, 120,000 TPM) is deployed on the Foundry resource. Its endpoint `https://<account>.services.ai.azure.com` is accepted by the skill and the vectorizer (supported domains: `openai.azure.com`, `services.ai.azure.com`, `cognitiveservices.azure.com`).
+2. **Container.** On the storage account, create `documents` (private access).
+3. **Search service.**
+   - *Identity*: enable the **system** managed identity;
+   - *Keys*: access control "**Role-based access control**" (or "Both").
+4. **Roles** (*Access control (IAM)*):
+
+| Who | Role | On | Why |
 | --- | --- | --- | --- |
-| Identité de `ais-sa2` | Storage Blob Data Reader | `stsavantazurian2` | L'indexeur lit les fichiers. |
-| Identité de `ais-sa2` | Cognitive Services OpenAI User | `fp-savant-azurian-2-resource` | Embeddings à l'indexation et à la requête. |
-| Ton compte | Search Service Contributor + Search Index Data Contributor | `ais-sa2` | Lancer ce script et explorer l'index. |
-| `id-sa2-bff` (PR 3) | Storage Blob Data Contributor, Search Index Data Contributor, Search Service Contributor | stockage, `ais-sa2` | Upload, suppression des morceaux, lancement de l'indexeur. |
-| Identité de l'agent (PR 2) | Search Index Data Reader | `ais-sa2` | Rechercher. |
+| The search service identity | Storage Blob Data Reader | the storage account | The indexer reads the files. |
+| The search service identity | Cognitive Services OpenAI User | the Foundry resource | Embeddings at indexing and at query time. |
+| Your account | Search Service Contributor + Search Index Data Contributor | the search service | Run the setup script and explore the index. |
+| The backend identity | Storage Blob Data Contributor, Search Index Data Contributor, Search Service Contributor | storage, search service | Upload, delete chunks, run the indexer. |
+| The agent identity | Search Index Data Reader | the search service | Search. |
 
-## Créer le pipeline
+## Create the pipeline
 
-Dans `.env` (jamais committé) :
+In `.env` (never committed):
 
 ```env
-SEARCH_ENDPOINT=https://ais-sa2.search.windows.net
-SEARCH_STORAGE_RESOURCE_ID=/subscriptions/<id>/resourceGroups/rg-savant-azurian-2/providers/Microsoft.Storage/storageAccounts/stsavantazurian2
-SEARCH_EMBEDDING_ENDPOINT=https://fp-savant-azurian-2-resource.services.ai.azure.com
+SEARCH_ENDPOINT=https://<service>.search.windows.net
+SEARCH_STORAGE_RESOURCE_ID=/subscriptions/<id>/resourceGroups/<group>/providers/Microsoft.Storage/storageAccounts/<name>
+SEARCH_EMBEDDING_ENDPOINT=https://<account>.services.ai.azure.com
 SEARCH_EMBEDDING_DEPLOYMENT=text-embedding-3-small
 ```
 
 ```bash
-uv run --locked python -m scripts.search_setup            # affiche les 4 définitions, n'envoie rien
-uv run --locked python -m scripts.search_setup --apply    # crée ou met à jour (PUT, ton identité Entra)
+uv run --locked python -m scripts.search_setup            # prints the 4 definitions, sends nothing
+uv run --locked python -m scripts.search_setup --apply    # creates or updates (PUT, your Entra identity)
 ```
 
-Le script est **idempotent** : le relancer met à jour les mêmes objets. Il n'utilise aucune clé et n'affiche
-que le code HTTP, ou le message d'erreur du service.
+The script is **idempotent**: running it again updates the same objects. It uses no key and prints only the HTTP status, or the service's error message.
 
-## Vérifier (preuve de la PR 1)
+## Check that it works
 
-1. Déposer à la main un petit PDF dans `documents/main/test-doc/` et lui ajouter deux **métadonnées** (dans
-   le portail : le blob, puis *Metadata*) : `project_id = main` et `document_id = test-doc`.
-2. `ais-sa2`, *Indexers*, `sa2-docs-indexer`, **Run**. Attendre « Success ».
-3. *Search explorer* sur `sa2-docs`, avec une requête qui contient un mot du PDF et le filtre
-   `project_id eq 'main'`. Des morceaux reviennent, avec `title` égal au nom du fichier et
-   `document_id = test-doc`.
-4. Le même filtre avec `project_id eq 'autre'` ne renvoie **rien** : l'isolation est prête pour la PR 2.
+1. Drop a small PDF by hand into `documents/main/test-doc/` and add two **metadata** entries (in the portal: the blob, then *Metadata*): `project_id = main` and `document_id = test-doc`.
+2. On the search service, *Indexers*, `sa2-docs-indexer`, **Run**. Wait for "Success".
+3. *Search explorer* on `sa2-docs`, with a query that contains a word from the PDF and the filter `project_id eq 'main'`. Chunks come back, with `title` equal to the file name and `document_id = test-doc`.
+4. The same filter with `project_id eq 'other'` returns **nothing**: isolation works.
 
-## Recherche par l'agent (PR 2)
+## Search by the agent
 
-L'agent a un outil de lecture `search_documents(query, more_queries?)` (`src/savant/documents.py`). Il n'apparaît que si
-`SEARCH_ENDPOINT` est configuré **et** que la requête porte un projet.
+The agent has a read tool `search_documents(query, more_queries?)` (`src/savant/documents.py`). It appears only if `SEARCH_ENDPOINT` is configured **and** the request carries a project.
 
-- **Le projet vient du serveur.** Le BFF met `metadata.project_id` d'après la session enregistrée
-  (Cosmos). `ConversationalResponsesHostServer.build_input` le lit (`request_project`, identifiant simple
-  seulement) et l'outil est construit pour ce tour, lié à ce projet. Le modèle ne fournit que `query` (et au plus 3 `more_queries`, d'autres angles de la même question, cherchés **ensemble** dans le même appel et fusionnés : 8 passages au plus, sans doublon, chaque angle représenté — un résumé ou une liste de limites tient en une étape au lieu de cinq, chacune coûtant un appel modèle de 5 à 16 s) ;
-  un argument `project_id` ajouté par le modèle est refusé par le schéma. Sans projet, pas d'outil (*fail closed*).
-- **La requête** est hybride (mots-clés et vecteur, la question étant vectorisée par le vectorizer de
-  l'index) et reclassée par le ranker sémantique (légende extractive). Elle renvoie au plus 5 passages de
-  1 200 caractères maximum, avec `document_id` et le nom du fichier.
-- **C'est une lecture** : pas d'approbation. Plusieurs recherches dans une même étape partent en
-  parallèle (4 au plus), avec les délais et la relance unique de `reliability.py`. Un 429 ou un 5xx
-  compte comme une erreur transitoire.
-- **Résultats = données extérieures** : ils sont enveloppés dans `<untrusted_data>` (`spotlight.py`),
-  comme le web et Notion.
-- **Journal** : `documents_search results=<n> ms=<durée>`, jamais la question, un titre ou un passage.
-- **Authentification** : `DefaultAzureCredential` de l'agent, portée `https://search.azure.com/.default`,
-  aucune clé. Rôle requis pour l'identité de l'agent
-  (`fp-savant-azurian-2-resource-fp-savant-azurian-2-sa2-agent-AgentIdentity`, objet
-  `<agent-identity-client-id>`) : **Search Index Data Reader** sur `ais-sa2`.
-- **Configuration** : `SEARCH_ENDPOINT` et `SEARCH_INDEX` (par défaut `sa2-docs`) dans `azure.yaml`.
+- **The project comes from the server.** The backend sets `metadata.project_id` from the stored session (Cosmos). `ConversationalResponsesHostServer.build_input` reads it (`request_project`, a plain identifier only) and the tool is built for that turn, bound to that project. The model supplies only `query` (and at most 3 `more_queries`, other angles of the same question, searched **together** in the same call and merged: 8 passages at most, without duplicates, every angle represented: a summary or a list of limits takes one step instead of five, each costing a 5 to 16 s model call). A `project_id` argument added by the model is refused by the schema. Without a project there is no tool (*fail closed*).
+- **The query** is hybrid (keywords and vector, the question being vectorized by the index's vectorizer) and re-ranked by the semantic ranker (extractive captions). It returns at most 5 passages of at most 1,200 characters, with `document_id` and the file name.
+- **It is a read**: no approval. Several searches in one step run in parallel (4 at most), with the timeouts and the single retry of `reliability.py`. A 429 or a 5xx counts as a transient error.
+- **Results are outside content**: they are wrapped in `<untrusted_data>` (`spotlight.py`), like the web and Notion.
+- **Log**: `documents_search results=<n> ms=<duration>`, never the question, a title or a passage.
+- **Authentication**: the agent's `DefaultAzureCredential`, scope `https://search.azure.com/.default`, no key. Required role for the agent identity: **Search Index Data Reader** on the search service.
+- **Configuration**: `SEARCH_ENDPOINT` and `SEARCH_INDEX` (default `sa2-docs`) in `azure.yaml`.
 
-## Envoi, liste et suppression par le BFF (PR 3)
+## Upload, list and delete by the backend
 
-Routes réservées au propriétaire (Easy Auth), montées seulement avec l'espace de travail (Cosmos) et
-`DOCUMENTS_ACCOUNT_URL` (`bff_documents.py`, règles dans `document_library.py`) :
+Routes reserved to the owner (Easy Auth), mounted only with the workspace (Cosmos) and `DOCUMENTS_ACCOUNT_URL` (`bff_documents.py`, rules in `document_library.py`):
 
-| Route | Effet |
+| Route | Effect |
 | --- | --- |
-| `GET /api/projects/{id}/documents` | Liste avec l'**état réel** : `ready` (l'index a des morceaux du document), `failed` (erreur de l'indexeur sur ce fichier), sinon `indexing`. |
-| `POST /api/projects/{id}/documents?name=<fichier>` | Corps = le fichier brut (pas de formulaire). Types : PDF, DOCX, PPTX, TXT, MD ; 16 Mo au plus. Écrit `documents/{projet}/{document}/{nom}` avec les métadonnées `project_id` et `document_id`, puis lance l'indexeur (un 409 « déjà en cours » suffit : il verra le fichier). |
-| `DELETE /api/projects/{id}/documents/{doc}` | Supprime d'abord les morceaux de l'index (filtre `project_id` + `document_id`), puis le fichier. |
-| `GET /api/projects/{id}/documents/{doc}/file` | Renvoie le fichier en ligne (un PDF s'ouvre dans le navigateur), `nosniff`. |
+| `GET /api/projects/{id}/documents` | Lists with the **real state**: `ready` (the index has chunks of the document), `failed` (indexer error on that file), otherwise `indexing`. |
+| `POST /api/projects/{id}/documents?name=<file>` | Body = the raw file (no form). Types: PDF, DOCX, PPTX, TXT, MD; 16 MB at most. Writes `documents/{project}/{document}/{name}` with the metadata `project_id` and `document_id`, then runs the indexer (a 409 "already running" is enough: it will see the file). |
+| `DELETE /api/projects/{id}/documents/{doc}` | Deletes the chunks from the index first (filter `project_id` + `document_id`), then the file. |
+| `GET /api/projects/{id}/documents/{doc}/file` | Returns the file inline (a PDF opens in the browser), `nosniff`. |
 
-- **Le blob est l'enregistrement** : aucune table de plus. Le projet doit exister dans Cosmos ; un document
-  d'un autre projet répond 404.
-- **Supprimer un projet** supprime aussi ses documents, index d'abord (D8).
-- **Ce qui n'est pas montré n'est pas cherché** (règle D8, corrigée le 2026-11-08) :
-  - *Suppression immédiate* : la corbeille supprime tout de suite les morceaux, puis le fichier. La PWA
-    garde d'abord une copie du fichier en mémoire ; **Undo** la renvoie comme un nouveau document (nouvel
-    identifiant, réindexé). Avant, la suppression attendait la fin du toast (6,5 s) : le document masqué
-    restait cherchable, et jamais supprimé si l'onglet se fermait.
-  - *Indexeur en cours* : un passage qui lisait déjà le fichier écrit ses morceaux *après* la suppression.
-    Le BFF attend donc la fin de ce passage en arrière-plan (`settle`, statut lu toutes les 5 s, 200 s au
-    plus), puis supprime ce qui n'a plus de fichier visible.
-  - *Réconciliation* : chaque `GET …/documents` lit l'index, puis les fichiers (dans cet ordre, pour qu'un
-    envoi en cours ne passe jamais pour un orphelin), et supprime les morceaux de tout document absent de la
-    liste. Un fichier déposé à la main (identifiant non standard, comme `test-doc`) n'est jamais listé : ses
-    morceaux partent, le fichier reste. Au mieux : un échec n'empêche pas la liste.
-  - *Garde côté agent* : `search_documents` ignore tout passage dont le document n'a pas un identifiant de
-    la liste (32 caractères hexadécimaux).
-  - La lecture et la suppression des morceaux couvrent plus de 1000 morceaux par document.
-- **Sources dans le chat** : quand l'agent appelle `search_documents`, le relais SSE émet
-  `{"type": "sources", "id": <appel>, "sources": [{"documentId", "title"}]}`. Seuls l'identifiant et le nom
-  du fichier passent, jamais le texte des passages.
-- **Journaux** : `document_added size_kb=…`, `documents_failed error_type=…` ; jamais un nom ni un id.
-- **Voix** : pendant `search_documents`, la PWA dit « Je regarde ça dans les sources du projet. » (puis
-  d'autres variantes pour les appels suivants), sans le modèle (`pwa/src/narration.ts`).
+- **The blob is the record**: no extra table. The project must exist in Cosmos; a document of another project answers 404.
+- **Deleting a project** also deletes its documents, index first (D8).
+- **What is not shown is not searched** (rule D8, corrected on 2026-11-08):
+  - *Immediate deletion*: the trash deletes the chunks right away, then the file. The web client first keeps a copy of the file in memory; **Undo** sends it back as a new document (new identifier, re-indexed). Before, deletion waited for the end of the toast (6.5 s): the hidden document stayed searchable, and was never deleted if the tab closed.
+  - *Indexer running*: a pass that was already reading the file writes its chunks *after* the deletion. The backend therefore waits for that pass to finish in the background (`settle`, status read every 5 s, 200 s at most), then deletes what no longer has a visible file.
+  - *Reconciliation*: every `GET …/documents` reads the index, then the files (in that order, so an upload in progress never looks like an orphan), and deletes the chunks of any document missing from the list. A file dropped by hand (a non-standard identifier such as `test-doc`) is never listed: its chunks go, the file stays. Best effort: a failure does not prevent the list.
+  - *Agent-side guard*: `search_documents` ignores any passage whose document does not have a listed identifier (32 hexadecimal characters).
+  - Reading and deleting chunks cover more than 1,000 chunks per document.
+- **Sources in the chat**: when the agent calls `search_documents`, the SSE relay emits `{"type": "sources", "id": <call>, "sources": [{"documentId", "title"}]}`. Only the identifier and the file name pass, never the text of the passages.
+- **Logs**: `document_added size_kb=…`, `documents_failed error_type=…`; never a name or an id.
+- **Voice**: during `search_documents`, the web client says "Je regarde ça dans les sources du projet." (then other variants for later calls), without the model (`pwa/src/narration.ts`).
 
-Configuration du Container App (en plus de `COSMOS_ENDPOINT`) : `DOCUMENTS_ACCOUNT_URL=https://stsavantazurian2.blob.core.windows.net`,
-`SEARCH_ENDPOINT=https://ais-sa2.search.windows.net` ; optionnels `DOCUMENTS_CONTAINER` (`documents`),
-`SEARCH_INDEX` (`sa2-docs`), `SEARCH_INDEXER` (`sa2-docs-indexer`). `SEARCH_ENDPOINT` seul n'active rien
-côté BFF.
+Container App configuration (besides `COSMOS_ENDPOINT`): `DOCUMENTS_ACCOUNT_URL=https://<account>.blob.core.windows.net` and `SEARCH_ENDPOINT=https://<service>.search.windows.net`; optional `DOCUMENTS_CONTAINER` (`documents`), `SEARCH_INDEX` (`sa2-docs`), `SEARCH_INDEXER` (`sa2-docs-indexer`). `SEARCH_ENDPOINT` alone enables nothing on the backend.
 
-Rôles de `id-sa2-bff` (`<bff-identity-principal-id>`) : *Storage Blob Data Contributor* sur le
-conteneur `documents`, *Search Index Data Contributor* et *Search Service Contributor* sur `ais-sa2`.
+Roles of the backend identity: *Storage Blob Data Contributor* on the `documents` container, *Search Index Data Contributor* and *Search Service Contributor* on the search service.
 
-## Interface (PR 4)
+## Interface
 
-`DOCUMENTS_ENABLED` et `ATTACHMENTS_ENABLED` sont activés (`pwa/src/flags.ts`).
+`DOCUMENTS_ENABLED` and `ATTACHMENTS_ENABLED` are on (`pwa/src/flags.ts`).
 
-- **Sources du projet** : le projet est la portée de tout ce qui suit. Il se choisit en haut du rail
-  (sélecteur : un popover qui part du bouton, plus d'onglets Sessions/Projects), puis viennent ses sessions
-  et, en bas, la section **Sources · {projet}** (repliable). On ajoute par le bouton + ou par
-  glisser-déposer. Chaque ligne montre un badge (PDF, DOC, PPT, MD, TXT), le nom (en entier au survol),
-  la taille et l'**état réel** (Uploading… pendant l'envoi, puis Indexing… / Ready / Failed lus par le BFF,
-  rafraîchis toutes les 5 s tant qu'un document est en cours). Un clic sur le nom ouvre le fichier. La
-  corbeille le retire avec un toast **Undo** de 6,5 s, puis la suppression réelle a lieu (index puis
-  fichier).
-- **Destination toujours visible** : un fichier déposé n'importe où sur le fil de discussion va aux sources
-  du projet actif, et un voile dit « Add to {projet}'s sources » pendant le glisser. Le trombone du composer
-  fait la même chose (son infobulle nomme le projet). Plus de puce persistante dans le composer : un toast dit
-  « Added … · indexing… », puis « … is ready: Savant can search it » (ou l'échec), même si le rail est replié.
-- **Sous la réponse** : « Sources · N », avec une puce par document cité (événement SSE `sources`). Un
-  document connu du projet s'ouvre au clic ; un document inconnu (par exemple déposé à la main) est
-  seulement nommé.
-- **Voix** : « Je regarde ça dans les sources du projet. » pendant la recherche (PR 3).
-- Les fichiers refusés (type, taille, vide) sont annoncés par un toast avec la raison donnée par le BFF.
-- Les sources sont gardées pour la page en cours seulement, comme les étapes d'outils : elles ne sont pas
-  enregistrées dans Cosmos.
+- **Project sources**: the project is the scope of everything below. It is chosen at the top of the rail (a selector: a popover that opens from the button, no more Sessions/Projects tabs), then come its sessions and, at the bottom, the collapsible **Sources · {project}** section. Add with the + button or by drag and drop. Each row shows a badge (PDF, DOC, PPT, MD, TXT), the name (in full on hover), the size and the **real state** (Uploading… during the upload, then Indexing… / Ready / Failed read by the backend, refreshed every 5 s while a document is in progress). Clicking the name opens the file. The trash removes it with a 6.5 s **Undo** toast, after which the real deletion happens (index, then file).
+- **Always-visible destination**: a file dropped anywhere on the discussion thread goes to the active project's sources, and a veil says "Add to {project}'s sources" while dragging. The composer's paperclip does the same (its tooltip names the project). There is no persistent chip in the composer any more: a toast says "Added … · indexing…", then "… is ready: Savant can search it" (or the failure), even when the rail is collapsed.
+- **Under the answer**: "Sources · N", with one chip per cited document (the `sources` SSE event). A document known to the project opens on click; an unknown document (dropped by hand, for example) is only named.
+- **Voice**: "Je regarde ça dans les sources du projet." during the search.
+- Refused files (type, size, empty) are announced by a toast with the reason given by the backend.
+- Sources are kept for the current page only, like tool steps: they are not saved in Cosmos.
 
-Vérifié en local contre le BFF déployé : `GET /api/projects/main/documents` répond 200 par le proxy de
-développement. L'envoi, l'indexation, l'ouverture et la suppression restent à vérifier dans l'interface.
+Verified locally against a deployed backend: `GET /api/projects/main/documents` answers 200 through the development proxy. Upload, indexing, opening and deletion still need to be checked in the interface.

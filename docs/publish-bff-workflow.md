@@ -1,124 +1,56 @@
-# Publication BFF dans ACR
+# Publishing the backend image to the registry
 
-Workflow : `.github/workflows/publish-bff.yml`. Image : `sa2-bff` dans
-`acrsavantazurian2`. Le build tourne sur le runner GitHub, sans ACR Tasks.
+Workflow: `.github/workflows/publish-bff.yml`. Image: `sa2-bff` in your Azure Container Registry. The build runs on the GitHub runner, without ACR Tasks. The registry name comes from the repository variable `ACR_NAME` (see the [configuration reference](configuration.md#github-repository-variables)).
 
-## Déclenchement et commit autorisé
+## Trigger and authorized commit
 
-Le workflow commence en mode manuel (`workflow_dispatch`, branche `main`).
-L'option booléenne `publish_v1` ajoute le tag `v1` pour la première publication.
-Elle vaut `false` par défaut. Le tag principal est toujours `sha-<SHA complet>`.
-Les deux tags désignent le même digest et sont verrouillés contre l'écriture
-et la suppression, ainsi que le manifest sous-jacent. Le workflow ne déverrouille
-jamais un tag. Un administrateur ayant les droits de modifier les attributs
-ACR pourrait toutefois lever ce verrou.
+The workflow starts in manual mode (`workflow_dispatch`, branch `main`). The boolean option `publish_v1` adds the `v1` tag for the first publication. It is `false` by default. The main tag is always `sha-<full SHA>`. Both tags point to the same digest and are locked against writing and deletion, as is the underlying manifest. The workflow never unlocks a tag. An administrator with the right to change ACR attributes could still lift that lock.
 
-Pour activer ensuite la publication automatique, définir la variable de dépôt
-GitHub `BFF_AUTO_PUBLISH=true`. Elle reste désactivée tant que cette variable
-n'existe pas ou possède une autre valeur. L'automatisation attend une CI
-réussie, issue d'un **push sur main dans ce dépôt**. Les CI de PR, de forks,
-annulées ou échouées ne permettent pas de publier. L'option `v1` reste manuelle.
+To enable automatic publication afterwards, set the GitHub repository variable `BFF_AUTO_PUBLISH=true`. It stays off while that variable does not exist or has another value. The automation waits for a green CI that comes from a **push to `main` in this repository**. CI runs from pull requests, forks, or that were cancelled or failed do not allow publication. The `v1` option stays manual.
 
-Les deux modes vérifient via l'API GitHub qu'une CI de push sur `main` a réussi
-pour le SHA exact. Le checkout automatique utilise `workflow_run.head_sha`,
-pas la tête de `main` au démarrage du job. Aucun artefact CI ni cache de PR
-n'est exécuté avec les droits Azure. Les actions sont épinglées par SHA.
+Both modes check through the GitHub API that a push CI on `main` succeeded for the exact SHA. The automatic checkout uses `workflow_run.head_sha`, not the head of `main` when the job starts. No CI artifact and no pull request cache is executed with Azure rights. Actions are pinned by SHA.
 
-## Filtrage et reprise
+## Filtering and resumption
 
-`scripts/release_plan.py` cherche le dernier run réussi avec un artefact `release-bff-<SHA>` (ou l'ancien nom `bff-checkpoint-<SHA>`), puis compare toute la plage jusqu'au SHA validé. `.github/components.json` définit les sources BFF, les entrées de build et les dépendances communes. Le Dockerfile ne copie dans l'image finale que les modules listés dans `source_files` ; `scripts/package_bff.py` vérifie les imports Python locaux statiques avant cette copie. Une modification de `src/savant/agent.py`, `graph.py` ou des outils propres à l'agent ne publie donc pas le BFF. Les modules OAuth partagés et les dépendances communes concernent les deux composants.
+`scripts/release_plan.py` looks for the last successful run with a `release-bff-<SHA>` artifact (or the old name `bff-checkpoint-<SHA>`), then compares the whole range up to the validated SHA. `.github/components.json` defines the backend sources, the build inputs and the shared dependencies. The Dockerfile copies into the final image only the modules listed in `source_files`; `scripts/package_bff.py` checks the static local Python imports before that copy. A change to `src/savant/agent.py`, `graph.py` or the agent's own tools therefore does not publish the backend. The shared OAuth modules and the common dependencies concern both components.
 
-Les tests, les scripts de publication et les workflows propres au BFF déclenchent ses contrôles CI, mais leur changement seul ne crée pas une image identique. Une publication manuelle reste possible pour tester ou réparer l'opération de publication. Un SHA qui n'est plus la tête de `main` au moment du plan est ignoré, sans checkpoint ; le prochain plan compare tous les changements depuis le dernier checkpoint éligible.
+Tests, publication scripts and workflows specific to the backend trigger its CI checks, but changing them alone does not create an identical image. A manual publication stays possible to test or repair the publication operation. A SHA that is no longer the head of `main` when the plan runs is ignored, without a checkpoint; the next plan compares all changes since the last eligible checkpoint.
 
-Les suppressions, renommages et push à plusieurs commits sont couverts.
-Un run échoué ne crée aucun checkpoint utilisable : ses changements restent
-à publier lors de la prochaine CI réussie. Un run sans changements crée un
-checkpoint avec `published=false`, sans authentification Azure.
-Les checkpoints sont conservés 90 jours ; s'ils ont expiré, s'il n'en existe
-pas ou si l'historique diverge, le workflow publie par précaution. Une erreur
-API interrompt le workflow, sans supposer qu'aucun changement n'existe.
+Deletions, renames and multi-commit pushes are covered. A failed run creates no usable checkpoint: its changes stay to be published at the next green CI. A run without changes creates a checkpoint with `published=false`, without Azure authentication. Checkpoints are kept for 90 days; if they expired, if none exists, or if the history diverges, the workflow publishes as a precaution. An API error stops the workflow, without assuming that no change exists.
 
-La concurrence est limitée à un run de publication, sans annuler un run actif.
-GitHub peut remplacer un run encore en attente : la comparaison avec le dernier
-checkpoint couvre alors aussi les modifications des runs intermédiaires.
+Concurrency is limited to one publication run, without cancelling an active run. GitHub can replace a run that is still waiting: the comparison with the last checkpoint then also covers the changes of the intermediate runs.
 
-## Construction, publication et preuve
+## Build, publication and proof
 
-1. Construire `Dockerfile.bff`, avec les labels OCI du dépôt et du SHA.
-2. Exécuter `scripts/smoke_test_bff.py` avec clé synthétique et SQLite.
-3. Obtenir un jeton Azure temporaire par OIDC, puis se connecter au registre.
-4. Publier `sha-<SHA>` s'il est absent. Une relance réutilise le digest déjà
-   présent et vérifie son label de révision ; elle ne remplace pas l'image
-   après une éventuelle évolution des images de base.
-5. Ajouter éventuellement `v1`. S'il existe pour un autre digest, échouer
-   sans l'écraser. Seule une réponse explicite « repository not found »
-   autorise le premier push ; une erreur réseau ou RBAC reste une erreur.
-6. Vérifier le digest distant contre celui enregistré par Docker après push,
-   tirer l'image par digest et vérifier la révision OCI.
-7. Verrouiller les tags et le manifest, puis relire leurs attributs.
-8. Enregistrer le digest dans le résumé GitHub et `bff-publication.json`
-   (artefact de checkpoint). Un échec partiel laisse le run rouge ; relancer
-   permet de reprendre les vérifications et verrous manquants.
+1. Build `Dockerfile.bff`, with the OCI labels of the repository and the SHA.
+2. Run `scripts/smoke_test_bff.py` with a synthetic key and SQLite.
+3. Obtain a temporary Azure token through OIDC, then sign in to the registry.
+4. Publish `sha-<SHA>` if it is absent. A rerun reuses the digest already present and checks its revision label; it does not replace the image after a possible change of the base images.
+5. Optionally add `v1`. If it exists for another digest, fail without overwriting it. Only an explicit "repository not found" answer allows the first push; a network or RBAC error stays an error.
+6. Check the remote digest against the one recorded by Docker after the push, pull the image by digest and check the OCI revision.
+7. Lock the tags and the manifest, then read their attributes back.
+8. Record the digest in the GitHub summary and in `bff-publication.json` (the checkpoint artifact). A partial failure leaves the run red; rerunning resumes the missing checks and locks.
 
-Le JSON contient le SHA, le digest, l'indicateur `published` et le run ID.
-Pour un run sans publication, le digest est vide ; retrouver le dernier run
-avec `published=true` pour la référence d'image réellement publiée.
-Une publication réussie prouve l'accès ACR et le smoke test synthétique.
-Elle ne prouve pas l'accès réel à Key Vault/Blob, ni le parcours OAuth en ACA.
+The JSON holds the SHA, the digest, the `published` flag and the run ID. For a run without publication the digest is empty; find the last run with `published=true` for the image reference actually published. A successful publication proves ACR access and the synthetic smoke test. It does not prove real access to Key Vault or Blob, nor the OAuth flow in Container Apps.
 
-## Permissions et audit Azure du 15 octobre 2026
+## Permissions
 
-Identité réutilisée : variable existante `AZURE_CLIENT_ID`, application
-`<github-oidc-client-id>`, principal
-`<github-oidc-principal-id>`. Les variables `AZURE_TENANT_ID`
-et `AZURE_SUBSCRIPTION_ID` restent celles de la CD existante.
+The workflow reuses the OIDC identity of the delivery workflow (the repository variable `AZURE_CLIENT_ID`; the Bicep template creates it, see the [deployment guide](deployment.md)). The federation uses the issuer `https://token.actions.githubusercontent.com`, the audience `api://AzureADTokenExchange` and the subject `repo:<owner>/<repo>:ref:refs/heads/main`. The workflow uses `main` and adds no GitHub Environment, which would change that subject. No client secret, no ACR password and no admin account is added.
 
-La fédération existante utilise l'émetteur
-`https://token.actions.githubusercontent.com`, l'audience
-`api://AzureADTokenExchange` et le sujet :
-`repo:<owner>/<repo>:ref:refs/heads/main`.
-Le workflow utilise `main` et n'ajoute pas de GitHub Environment, qui modifierait
-ce sujet. Aucun client secret, mot de passe ACR ou compte admin n'est ajouté.
+The registry runs with `roleAssignmentMode=LegacyRegistryPermissions` and the admin user disabled. The identity needs, on **the registry only**:
 
-Registre vérifié :
-
-- scope : `/subscriptions/<subscription-id>/resourceGroups/rg-savant-azurian-2/providers/Microsoft.ContainerRegistry/registries/acrsavantazurian2` ;
-- login server : `acrsavantazurian2-bkf5enaaagb4aygm.azurecr.io`
-  (résolu dynamiquement, sans supposer `<nom>.azurecr.io`) ;
-- `roleAssignmentMode=LegacyRegistryPermissions` ; admin désactivé ;
-- le repository `sa2-bff` n'existait pas lors de l'audit.
-
-L'audit des attributions directes et héritées retourne uniquement **Foundry
-User** au niveau du groupe de ressources pour cette identité. Ce rôle ne donne
-pas les droits ACR requis. Les droits suivants sont donc **manquants**, à faire
-approuver avant toute attribution :
-
-| Rôle | Scope minimal | Usage |
+| Role | Minimal scope | Use |
 | --- | --- | --- |
-| `Reader` | Registre ci-dessus uniquement | Résolution `loginServer` et lecture ARM utilisée par Azure CLI |
-| `AcrPush` | Registre ci-dessus uniquement | Push/pull, lecture des digests et mise à jour des attributs de tags/manifests |
+| `Reader` | The registry | Resolving `loginServer` and the ARM read used by Azure CLI |
+| `AcrPush` | The registry | Push and pull, reading digests and updating tag and manifest attributes |
 
-Ni Contributor, ni Owner, ni droit de création d'attribution RBAC ne sont
-nécessaires au job. Le mode classique ne permet pas de restreindre `AcrPush`
-au seul repository `sa2-bff`. Une future migration ABAC permettrait
-`Container Registry Repository Writer` avec condition sur ce repository,
-avec `Reader` pour la lecture ARM. Elle nécessite une décision séparée :
-les rôles historiques `AcrPush`/`AcrPull` ne sont pas honorés en mode ABAC.
-L'identité OIDC conserve ses droits Foundry existants parce qu'elle est partagée
-avec la CD ; ce workflow ne les étend pas et n'appelle aucun service Foundry.
+Neither Contributor, nor Owner, nor the right to create RBAC assignments is needed by the job. The classic mode cannot restrict `AcrPush` to the single `sa2-bff` repository. A future ABAC migration would allow `Container Registry Repository Writer` with a condition on that repository, with `Reader` for the ARM read. It needs a separate decision: the historical `AcrPush` and `AcrPull` roles are not honoured in ABAC mode.
 
-Côté GitHub, `plan` a `contents: read` et `actions: read`. Seul le job
-`publish` reçoit `id-token: write`, après les contrôles CI et changements.
-Le job `checkpoint` conserve uniquement `contents: read`.
+On the GitHub side, `plan` has `contents: read` and `actions: read`. Only the `publish` job receives `id-token: write`, after the CI and change checks. The `checkpoint` job keeps only `contents: read`.
 
-Lors de la PR initiale de publication BFF, aucune attribution RBAC, activation
-automatique, publication d'image ou modification de ressource Azure n'a été
-effectuée. La présente évolution modifie les workflows CI et CD pour utiliser
-le registre de composants décrit plus haut.
+## Validation and acceptance criteria
 
-## Validation et critères d'acceptation
-
-Contrôles locaux :
+Local checks:
 
 ```bash
 uv run --locked pytest tests/test_should_publish_bff.py tests/test_publish_bff.py
@@ -126,35 +58,26 @@ bash -n bff/publish.sh
 actionlint -shellcheck= .github/workflows/publish-bff.yml
 ```
 
-Les tests du shell requièrent `bash` et `jq`, déjà fournis par `ubuntu-latest`.
-Ils remplacent Azure et Docker par des exécutables simulés. Ils couvrent le
-premier push, `v1`, la relance sans push, le conflit de tag, l'échec d'auth,
-les digests/révisions incorrects et l'échec du verrouillage. Les tests de filtrage
-couvrent la pagination, les artefacts expirés et les plages multi-commits.
+The shell tests need `bash` and `jq`, already provided by `ubuntu-latest`. They replace Azure and Docker with simulated executables. They cover the first push, `v1`, a rerun without a push, a tag conflict, an authentication failure, wrong digests or revisions and a locking failure. The filtering tests cover pagination, expired artifacts and multi-commit ranges.
 
-Après revue et fusion, puis accord RBAC :
+After review, merge and RBAC agreement:
 
-- [ ] Confirmer `Reader` et `AcrPush` sur le registre pour l'identité OIDC.
-- [ ] Attendre la CI de push réussie sur le SHA de `main`.
-- [ ] Lancer manuellement `Publish BFF` sur `main` avec `publish_v1=true`.
-- [ ] Vérifier le smoke test, les tags SHA et `v1`, leur digest identique,
-      leurs attributs `writeEnabled=false`/`deleteEnabled=false` et le JSON.
-- [ ] Relancer sur le même SHA : aucun écrasement ni nouveau push requis.
-- [ ] Activer ensuite `BFF_AUTO_PUBLISH=true` par décision explicite.
-- [ ] Vérifier qu'une modification BFF suivie d'une CI verte publie son SHA,
-      et qu'une modification documentaire seule saute le job Azure.
-- [ ] Vérifier qu'une CI rouge, une CI de PR et un dispatch hors `main`
-      ne publient rien.
-- [ ] Vérifier qu'une tentative de déplacer `v1` vers un autre SHA échoue.
+- [ ] Confirm `Reader` and `AcrPush` on the registry for the OIDC identity.
+- [ ] Wait for a green push CI on the SHA of `main`.
+- [ ] Run `Publish BFF` manually on `main` with `publish_v1=true`.
+- [ ] Check the smoke test, the SHA and `v1` tags, their identical digest, their `writeEnabled=false` / `deleteEnabled=false` attributes and the JSON.
+- [ ] Rerun on the same SHA: no overwrite and no new push needed.
+- [ ] Then turn on `BFF_AUTO_PUBLISH=true` by explicit decision.
+- [ ] Check that a backend change followed by a green CI publishes its SHA, and that a documentation-only change skips the Azure job.
+- [ ] Check that a red CI, a pull request CI and a dispatch outside `main` publish nothing.
+- [ ] Check that an attempt to move `v1` to another SHA fails.
 
-Le workflow s'arrête à la publication ACR : le déploiement ACA reste une étape
-manuelle distincte. Aucun déploiement Foundry n'est ajouté ou modifié.
+The workflow stops at the registry publication: the Container Apps rollout stays a separate manual step. No Foundry deployment is added or changed.
 
-## Références
+## References
 
-- [Task 26.1](https://app.notion.com/p/3f1eba09656f81d58cdceea603a4841f).
-- [SDD-004 — Continuous Integration Workflow](https://app.notion.com/p/3e5eba09656f81b9b2cec0863551d273).
-- [ADR-009 — Container Apps BFF](https://app.notion.com/p/3f1eba09656f8131ad63eea86d33b7ce).
-- [Événement workflow_run](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#workflow_run).
-- [Rôles ACR et modes RBAC/ABAC](https://learn.microsoft.com/azure/container-registry/container-registry-rbac-built-in-roles-directory-reference).
-- [Verrouillage des images ACR](https://learn.microsoft.com/azure/container-registry/container-registry-image-lock).
+- [SDD-004, continuous integration and delivery](design/sdd-004-continuous-integration-and-delivery.md).
+- [ADR-0009, the Container Apps backend](adr/0009-bff-owns-user-facing-oauth.md).
+- [The `workflow_run` event](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#workflow_run).
+- [ACR roles and RBAC/ABAC modes](https://learn.microsoft.com/azure/container-registry/container-registry-rbac-built-in-roles-directory-reference).
+- [ACR image locking](https://learn.microsoft.com/azure/container-registry/container-registry-image-lock).

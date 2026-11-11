@@ -1,85 +1,36 @@
-# CI/CD par composant
+# Component-based CI/CD
 
-## Périmètre
+## Scope
 
-Cette évolution propose de distinguer le Hosted Agent et le BFF dans un même
-dépôt. Le registre `.github/components.json` contient les chemins de runtime,
-les contrôles CI et les fichiers BFF emballés. `scripts/component_changes.py`
-applique ces règles ; `scripts/release_plan.py` planifie chaque livraison avec
-un checkpoint propre au composant. Ajouter un service implique de déclarer ses
-chemins et son workflow, puis de créer ses jobs CI/CD et son checkpoint : le
-registre ne crée pas automatiquement les workflows ou les ressources Azure.
+The repository holds two delivered components, the Hosted Agent and the backend (BFF), and a web client that is validated but not delivered. The registry `.github/components.json` holds the runtime paths, the CI checks and the packaged backend files. `scripts/component_changes.py` applies these rules; `scripts/release_plan.py` plans each delivery with a checkpoint specific to the component. Adding a service means declaring its paths and its workflow, then creating its CI and CD jobs and its checkpoint: the registry does not create workflows or Azure resources automatically. The design is in [SDD-004](design/sdd-004-continuous-integration-and-delivery.md).
 
-| Changement | CI Python | Build/smoke BFF en CI | CD agent | Publication BFF |
+| Change | Python CI | Backend build and smoke test in CI | Agent CD | Backend publication |
 | --- | --- | --- | --- | --- |
-| Agent seul, par exemple `src/savant/graph.py` | Oui | Non | Oui | Non |
-| BFF seul, par exemple `oauth_callback.py` | Oui | Oui | Non | Oui |
-| Code OAuth partagé ou `uv.lock` | Oui | Oui | Oui | Oui |
-| Documentation seule | Oui | Non | Non | Non |
-| Contrôles ou workflow BFF seuls | Oui | Oui | Non | Non |
-| Chemin non attribué | Oui | Oui | Oui | Oui |
+| Agent only, for example `src/savant/graph.py` | Yes | No | Yes | No |
+| Backend only, for example `oauth_callback.py` | Yes | Yes | No | Yes |
+| Shared OAuth code or `uv.lock` | Yes | Yes | Yes | Yes |
+| Documentation only | Yes | No | No | No |
+| Backend checks or workflow only | Yes | Yes | No | No |
+| A path nobody owns | Yes | Yes | Yes | Yes |
 
-Le tableau décrit les décisions automatiques lorsque le checkpoint est
-disponible, l'historique comparable et la CI verte. L'étiquette « Oui » dans la
-colonne publication est conditionnée à `BFF_AUTO_PUBLISH=true`. La publication
-BFF crée une image ACR immuable ; elle ne met pas à jour la révision ACA.
-`workflow_dispatch` sur la tête de `main` demande explicitement la livraison du
-composant sélectionné, après vérification de la CI du SHA exact.
+The table describes the automatic decisions when the checkpoint is available, the history comparable and the CI green. A "Yes" in the publication column is conditional on `BFF_AUTO_PUBLISH=true`. Backend publication creates an immutable registry image; it does not update the Container Apps revision. `workflow_dispatch` on the head of `main` explicitly asks for delivery of the selected component, after checking the CI of the exact SHA.
 
-## Détection et livraison
+## Detection and delivery
 
-1. La CI tourne sur les PR et les push vers `main`. Elle utilise une comparaison
-   Git complète et lance toujours la suite Python. Le build/smoke Docker BFF ne
-   tourne que pour les chemins BFF pertinents ; en cas de comparaison impossible,
-   il tourne par précaution. Une CI de PR n'autorise aucune livraison Azure.
-2. Chaque workflow de livraison part du SHA de la CI de push réussie et vérifie
-   le dépôt, la branche, l'événement et ce SHA via l'API GitHub. Il vérifie aussi
-   que le SHA est encore la tête de `main` à la planification. Un run obsolète ne
-   déploie pas et ne crée pas de checkpoint. La tête peut encore évoluer pendant
-   un déploiement déjà commencé ; un run ultérieur rattrape alors les changements.
-3. Le planificateur compare la plage complète depuis le dernier checkpoint réussi
-   du composant. Les suppressions et les renommages sont traités comme chemins
-   supprimés et ajoutés. Un échec ne fait pas avancer le checkpoint ; un run
-   écarté par la concurrence ne masque pas ses changements.
-4. Absence ou expiration du checkpoint, historique divergent ou chemin inconnu :
-   livraison prudente. Une erreur d'API ou une configuration invalide fait
-   échouer le plan avant toute authentification Azure. La première exécution de
-   cette version peut livrer les deux composants, car le registre et le
-   Dockerfile changent et l'agent n'a pas de checkpoint historique.
-5. Après succès du déploiement agent et de son smoke test, ou de la publication
-   BFF et de sa vérification du digest, un artefact de checkpoint est enregistré.
-   Une décision « inchangé » enregistrée après une CI verte fait aussi avancer le
-   point de comparaison. Les artefacts expirent après 90 jours. Pour retrouver
-   la dernière version ou image réellement livrée, consulter le dernier artefact
-   dont `released` ou `published` est vrai.
+1. CI runs on pull requests and pushes to `main`. It uses a full Git comparison and always runs the Python suite. The backend Docker build and smoke test run only for the relevant backend paths; when the comparison is impossible, they run as a precaution. A pull request CI authorizes no Azure delivery.
+2. Each delivery workflow starts from the SHA of the successful push CI and checks the repository, the branch, the event and that SHA through the GitHub API. It also checks that the SHA is still the head of `main` when planning. A stale run does not deploy and creates no checkpoint. The head can still move during a deployment that has already started; a later run then catches up with the changes.
+3. The planner compares the whole range since the component's last successful checkpoint. Deletions and renames are treated as removed and added paths. A failure does not advance the checkpoint; a run discarded by concurrency does not hide its changes.
+4. A missing or expired checkpoint, a diverged history or an unknown path: a cautious delivery. An API error or an invalid configuration fails the plan before any Azure authentication. The first run of this version can deliver both components, because the registry and the Dockerfile change and the agent has no historical checkpoint.
+5. After the agent deployment and its smoke test succeed, or the backend publication and its digest check, a checkpoint artifact is recorded. An "unchanged" decision recorded after a green CI also advances the comparison point. Artifacts expire after 90 days. To find the last version or image actually delivered, look at the latest artifact where `released` or `published` is true.
 
-Les workflows qui ne livrent pas n'obtiennent pas de jeton OIDC Azure. La
-publication BFF conserve les tags `sha-<commit>`, la vérification du digest et les
-verrous ACR déjà en place. Les deux workflows restent sérialisés séparément.
+Workflows that do not deliver get no Azure OIDC token. Backend publication keeps the `sha-<commit>` tags, the digest check and the registry locks already in place. The two workflows stay serialized separately.
 
-## Frontière du BFF
+## The backend boundary
 
-Le build utilise les six modules Python explicitement listés dans
-`components.bff.source_files`. `scripts/package_bff.py` analyse leurs imports
-Python locaux statiques et refuse le build si un fichier existant importé n'est
-pas déclaré. Le Dockerfile copie uniquement ce résultat dans l'image finale.
-Une dépendance chargée dynamiquement doit être ajoutée explicitement au registre
-et couverte par le smoke test ; l'analyse statique ne peut pas la déduire.
-Les dépendances Python sont encore communes : tout changement de `uv.lock` ou de
-`pyproject.toml` concerne donc les deux composants.
+The build uses the Python modules explicitly listed in `components.bff.source_files`. `scripts/package_bff.py` analyzes their static local Python imports and refuses the build if an existing imported file is not declared. The Dockerfile copies only that result into the final image. A dynamically loaded dependency must be added explicitly to the registry and covered by the smoke test; the static analysis cannot infer it. Python dependencies are still shared: any change to `uv.lock` or `pyproject.toml` therefore concerns both components.
 
-Pour ajouter un nouveau composant, définir ses fichiers de runtime et ses
-contrôles CI, identifier explicitement les dépendances communes, choisir ses
-permissions, son mécanisme de livraison, son checkpoint et son smoke test, puis
-ajouter des scénarios de modification isolée, partagée, mixte, supprimée et de
-reprise après échec. Les chemins non attribués restent conservateurs jusqu'à ce
-que leur propriétaire soit défini.
+To add a new component, define its runtime files and its CI checks, identify the shared dependencies explicitly, choose its permissions, its delivery mechanism, its checkpoint and its smoke test, then add scenarios for isolated, shared, mixed and deleted changes and for recovery after a failure. Unowned paths stay conservative until their owner is defined.
 
-## Validation et limites
+## Validation and limits
 
-Les tests locaux simulent les comparaisons Git, la pagination des checkpoints,
-le contrôle de la CI et les commandes de publication. La construction et le
-smoke Docker doivent également réussir dans la CI GitHub. La réussite d'une CI
-ne prouve pas qu'une image a été publiée ou qu'un agent a été déployé. La fusion
-de cette proposition active les workflows existants : examiner les plans et les
-premières publications avant de considérer le comportement distant vérifié.
+The local tests simulate Git comparisons, checkpoint pagination, the CI check and the publication commands. The Docker build and smoke test must also pass in GitHub CI. A green CI does not prove that an image was published or that an agent was deployed. Merging a change to the registry activates the existing workflows: examine the plans and the first publications before considering the remote behaviour verified.

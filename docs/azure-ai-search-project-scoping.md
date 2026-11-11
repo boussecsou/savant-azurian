@@ -266,15 +266,16 @@ from azure.identity.aio import DefaultAzureCredential
 from azure.search.documents.aio import SearchClient
 from azure.search.documents.models import VectorizedQuery
 
+
 async def search_project(client: SearchClient, project_id: str, query: str, vector: list[float]):
-    if not ID_RE.fullmatch(project_id or ""):          # fail closed
+    if not ID_RE.fullmatch(project_id or ""):  # fail closed
         raise PermissionError("no project in scope")
     flt = f"project_id eq '{project_id.replace(chr(39), chr(39) * 2)}'"
     results = await client.search(
-        search_text=query,                              # keyword leg
+        search_text=query,  # keyword leg
         vector_queries=[VectorizedQuery(vector=vector, k_nearest_neighbors=50, fields="chunk_vector")],
         vector_filter_mode="preFilter",
-        filter=flt,                                     # server-side, never from the model
+        filter=flt,  # server-side, never from the model
         select=["chunk_id", "title", "source", "chunk"],
         top=8,
     )

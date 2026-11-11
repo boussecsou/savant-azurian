@@ -1,39 +1,25 @@
-# CI — Savant Azurian 2
+# Continuous integration
 
-Mis à jour le 2 octobre 2026. Workflow implémenté : `.github/workflows/ci.yml`.
+Implemented in `.github/workflows/ci.yml`. The design is in [SDD-004](design/sdd-004-continuous-integration-and-delivery.md).
 
-La CI s'exécute sur les PR vers `main` et les push sur `main`. Elle utilise
-Python 3.13, comme le runtime Foundry, et des actions épinglées par SHA.
-Un nouveau run annule le run précédent de la même branche.
+CI runs on pull requests to `main` and on pushes to `main`. It uses Python 3.13, like the Foundry runtime, and actions pinned by SHA. A new run cancels the previous run of the same branch.
 
-## Contrôles
+## Checks
 
-1. `uv sync --locked --group dev` reconstruit l'environnement depuis `uv.lock`.
-2. `uv export --locked --no-dev --no-emit-project --no-hashes --format requirements-txt --output-file requirements.txt` régénère les dépendances de déploiement.
-3. `git diff --exit-code -- requirements.txt` vérifie que l'export versionné
-   correspond au lockfile.
-4. `uv run --locked pytest` teste le modèle simulé, le graphe, les confirmations,
-   les backends Notion/Toolbox et le contrôle du résultat du smoke test.
+1. `uv sync --locked --group dev` rebuilds the environment from `uv.lock`.
+2. `uv export --locked --no-dev --no-emit-project --no-hashes --format requirements-txt --output-file requirements.txt` regenerates the deployment dependencies.
+3. `git diff --exit-code -- requirements.txt` checks that the versioned export matches the lockfile.
+4. `uv run --locked pytest` tests the simulated model, the graph, the confirmations, the Notion and Toolbox backends and the check of the smoke test result.
+5. `ruff check` and `ruff format --check` (the `lint` job).
+6. `python3 -m scripts.check_docs` (the `docs` job) checks relative links and anchors, the format and index of the ADRs, that every document is reachable from an index, and that headings and file names are in English.
+7. A secrets scan of the full history with gitleaks (the `secrets` job).
 
-La permission GitHub est limitée à `contents: read`. Aucun accès Azure ni
-consentement personnel n'est nécessaire. Les appels distants sont simulés.
-La CI ne valide pas le consentement OAuth ni l'accès réel aux pages Notion.
+The GitHub permission is limited to `contents: read`. No Azure access and no personal consent are needed. Remote calls are simulated. CI does not validate OAuth consent or real access to Notion pages.
 
-Le job `changes` utilise `.github/components.json` pour classifier les fichiers modifiés par composant. Le job `test` reste un contrôle commun toujours exécuté. Le job `bff` est ignoré si les sources et contrôles qui le concernent sont inchangés. Si la comparaison Git est impossible, il est exécuté par précaution. Quand il est nécessaire, le job `bff` construit `Dockerfile.bff`, puis lance
-`scripts/smoke_test_bff.py` avec une clé synthétique et SQLite. Il vérifie
-`/readiness` via le port publié et l'absence du SDK Key Vault dans l'image.
-Il n'utilise aucune identité Azure ni aucun secret du dépôt et ne publie pas
-l'image. Un job `bff` ignoré est attendu lorsque le BFF n'est pas concerné ;
-les jobs exécutés doivent réussir pour que le workflow CI soit vert.
+The `changes` job uses `.github/components.json` to classify the changed files by component. The `test` job is a shared check that always runs. The `bff` job is skipped when the sources and checks that concern it are unchanged. If the Git comparison is impossible, it runs as a precaution. When it is needed, the `bff` job builds `Dockerfile.bff`, then runs `scripts/smoke_test_bff.py` with a synthetic key and SQLite. It checks `/readiness` through the published port and the absence of the Key Vault SDK in the image. It uses no Azure identity and no secret of the repository, and does not publish the image. A skipped `bff` job is expected when the backend is not concerned; the jobs that run must pass for the CI workflow to be green.
 
-## Modifier une dépendance
+## Changing a dependency
 
-Mettre à jour `pyproject.toml` et `uv.lock`, puis exécuter la commande d'export
-ci-dessus et commiter aussi `requirements.txt`. Celui-ci contient les versions
-exactes des dépendances de production ; le package Savant est chargé depuis
-`src/` grâce au `PYTHONPATH` du manifeste. Les dépendances `dev` ne sont pas
-exportées.
+Update `pyproject.toml` and `uv.lock`, then run the export command above and commit `requirements.txt` too. It holds the exact versions of the production dependencies; the Savant package is loaded from `src/` thanks to the manifest's `PYTHONPATH`. The `dev` dependencies are not exported.
 
-Une CI réussie sur un **push de ce SHA sur main** autorise la CD. Une réussite
-sur PR seule ne suffit pas. Cette règle s'applique aussi au déclenchement manuel
-CD ; voir `docs/cd-workflow.md`.
+A green CI on a **push of that SHA to `main`** authorizes CD. A green run on a pull request alone is not enough. The rule also applies to manual CD dispatch; see [the CD workflow](cd-workflow.md).

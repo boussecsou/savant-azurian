@@ -1,104 +1,57 @@
-# CD — Savant Azurian 2
+# Continuous delivery of the agent
 
-Mis à jour le 2 octobre 2026. Workflow implémenté : `.github/workflows/cd.yml`.
+Implemented in `.github/workflows/cd.yml`. The design is in [SDD-004](design/sdd-004-continuous-integration-and-delivery.md). The workflow ships **disabled by default** in a fresh copy of the repository: it needs your own Azure identity and variables (see the [deployment guide](deployment.md#11-github-actions-optional)).
 
-## Commit autorisé et identité de déploiement
+## Authorized commit and deployment identity
 
-La CD démarre après une CI réussie issue d'un push sur `main` dans ce dépôt.
-Elle récupère le SHA exact du run CI. Un déclenchement manuel reste possible
-sur `main`, mais vérifie également qu'une CI de push a réussi sur le SHA choisi.
-Le job consulte l'API GitHub avec `actions: read` avant toute connexion Azure.
+CD starts after a green CI that comes from a push to `main` in this repository. It takes the exact SHA of the CI run. A manual trigger stays possible on `main`, but it also checks that a push CI succeeded on the chosen SHA. The job queries the GitHub API with `actions: read` before any Azure sign-in.
 
-Les permissions sont `contents: read`, `actions: read` et `id-token: write`.
-`azure/login` échange le jeton OIDC GitHub contre un accès Azure temporaire.
-L'app registration et son service principal existent déjà, avec une identité
-fédérée limitée à `repo:<owner>/<repo>:ref:refs/heads/main`.
-Aucun secret Azure permanent n'est ajouté. `azd` utilise la session Azure CLI.
+The permissions are `contents: read`, `actions: read` and `id-token: write`. `azure/login` exchanges the GitHub OIDC token for temporary Azure access. The federated credential belongs to a user-assigned identity and is limited to `repo:<owner>/<repo>:ref:refs/heads/main`. No permanent Azure secret is added. `azd` uses the Azure CLI session.
 
-Les variables GitHub existantes fournissent les identifiants Azure, la région,
-le projet et la configuration modèle. Le workflow conserve les noms existants
-pour éviter une migration des variables. `TOOLBOX_ENDPOINT` est directement
-versionné dans `azure.yaml` ; il ne nécessite pas de nouvelle variable GitHub.
+## Configuration comes from GitHub variables
 
-Depuis la migration du 8 octobre 2026, `FOUNDRY_MODEL_NAME` sélectionne le
-déploiement existant `sa2-gpt-6-luna`. La base Azure OpenAI reste en `/openai/v1/`.
-Le client utilise Responses avec un historique géré par LangGraph ; voir
-[la configuration du modèle](model-gpt-6-luna.md).
+The workflow sets the whole `azd` environment from GitHub repository variables whose names equal the `azd` variables that `azure.yaml` reads (`AZURE_AI_PROJECT_ENDPOINT`, `AZURE_OPENAI_BASE_URL`, `AZURE_AI_MODEL_DEPLOYMENT_NAME`, `TOOLBOX_ENDPOINT`, the `NOTION_*`, `SSH_*` and `SEARCH_*` values, and so on). Each is described in the [configuration reference](configuration.md#github-repository-variables), and `scripts/setup/github-variables.sh` copies them from your `azd` environment. A test (`tests/test_config_docs.py`) fails if `azure.yaml` reads a variable that `cd.yml` never sets.
 
-## Déploiement et dépendances
+The Azure OpenAI base stays in `/openai/v1/` form. The client uses the Responses API with a history managed by LangGraph; see [the model configuration](model-gpt-6-luna.md).
 
-Le workflow vérifie que `requirements.txt` correspond à `uv.lock`, puis lance
-`azd deploy sa2-agent --no-prompt` sur le projet existant. Aucun provisioning
-ni création de connexion/toolbox n'est ajouté.
+## Deployment and dependencies
 
-Le service reste en `remote_build`, Python 3.13, entrée `main.py`.
-`requirements.txt` contient les versions de production exportées du lockfile.
-`.agentignore` exclut notamment les fichiers `.env`, les états CLI, les logs
-utilisateur et les documents du ZIP, indépendamment des exclusions Git.
+The workflow checks that `requirements.txt` matches `uv.lock`, then runs `azd deploy sa2-agent --no-prompt` on the existing project. It adds no provisioning and creates no connection or toolbox.
 
-Après déploiement, le workflow lit `AGENT_SA2_AGENT_VERSION`, vérifie son format,
-puis enregistre le SHA et la version dans le résumé GitHub. Un déploiement
-réussi sans sortie de version valide fait échouer le job.
+The service stays on `remote_build`, Python 3.13, entry point `main.py`. `requirements.txt` holds the production versions exported from the lockfile. `.agentignore` excludes `.env` files, CLI state, user logs and the documentation from the ZIP, independently of Git's exclusions.
 
-## Smoke test : runtime et modèle
+After deployment, the workflow reads `AGENT_SA2_AGENT_VERSION`, checks its format, then records the SHA and the version in the GitHub summary. A successful deployment without a valid version output fails the job.
 
-`scripts/smoke_test.py` invoque explicitement `sa2-agent` et la version publiée,
-avec `--protocol responses`, une nouvelle session et une nouvelle conversation.
-La requête expire après 180 secondes, et le processus après 240 secondes.
+## Smoke test: runtime and model
 
-Le message exact défini dans `savant.health` sélectionne, uniquement dans une
-conversation neuve, un appel au **vrai modèle sans tools**. Il ne découvre pas
-la toolbox et ne demande pas de consentement personnel. Ce chemin n'exécute
-aucune action externe et ne retourne pas une réponse codée en dur.
+`scripts/smoke_test.py` explicitly invokes `sa2-agent` and the published version, with `--protocol responses`, a new session and a new conversation. The request times out after 180 seconds, and the process after 240 seconds.
 
-Le vérificateur exige HTTP 200, une réponse Responses `completed`, sans erreur
-ni appel/approbation de tool, et le texte exact `SA2_RUNTIME_MODEL_OK`.
-Il accepte le résultat JSON et le résultat SSE `response.completed`.
-Une sortie non vide ou une instruction de consentement ne suffit plus.
+The exact message defined in `savant.health` selects, only in a fresh conversation, a call to the **real model with no tools**. It does not discover the toolbox and asks for no personal consent. This path performs no external action and does not return a hard-coded answer.
 
-La sortie brute et stderr de l'invocation sont capturés en mémoire et ne sont
-ni imprimés ni téléversés comme artefact. Le résumé ne contient que le SHA,
-la version, le résultat du contrôle et sa durée. Les liens de consentement,
-headers et identifiants de session restent hors logs du smoke test.
-Cela ne supprime pas les journaux produits côté Foundry par le SDK.
+The checker requires HTTP 200, a Responses `completed` answer, with no error and no tool call or approval, and the exact text `SA2_RUNTIME_MODEL_OK`. It accepts the JSON result and the SSE `response.completed` result. A non-empty output or a consent instruction is no longer enough.
 
-## Validation personnelle des tools
+The raw output and stderr of the invocation are captured in memory and are neither printed nor uploaded as an artifact. The summary holds only the SHA, the version, the check result and its duration. Consent links, headers and session identifiers stay out of the smoke test's logs. This does not remove the logs the SDK produces on the Foundry side.
 
-L'identité GitHub CD déploie et teste le runtime. Elle ne porte pas le
-consentement OAuth de l'utilisateur et ne l'accepte pas à sa place.
+## Personal validation of the tools
 
-Après publication, l'utilisateur ouvre une conversation normale dans le
-Playground, suit manuellement les instructions de consentement si nécessaire,
-puis renvoie sa demande. Il vérifie ensuite une lecture réelle et, séparément,
-une écriture avec approbation ou refus. Le consentement donne accès à la
-connexion ; l'approbation autorise une action précise.
+The CD identity deploys and tests the runtime. It does not carry the user's OAuth consent and does not accept it on their behalf.
 
-Une CD verte prouve le démarrage, le protocole Responses et l'inférence du
-modèle pour l'identité du pipeline. Elle ne prouve ni le consentement personnel,
-ni l'exécution des tools, ni les droits de tous les utilisateurs.
+After publication, the user opens a normal conversation in the playground, follows the consent instructions manually if needed, then sends their request again. They then check a real read and, separately, a write with approval or refusal. Consent gives access to the connection; approval authorizes one precise action.
 
-## Limites conservées
+A green CD proves startup, the Responses protocol and the model's inference for the pipeline's identity. It does not prove personal consent, the execution of tools, or the rights of every user.
 
-Le smoke test arrive après publication. Une erreur fait échouer la CD mais ne
-provoque pas de rollback automatique. Un seul environnement est utilisé ;
-aucun déploiement bleu/vert, canary ou système de notification n'est ajouté.
-Les actions sont épinglées par SHA ; azd et son extension restent installés
-selon les versions proposées par leurs outils d'installation.
+## Known limits
 
-Références : [déploiement source Foundry](https://learn.microsoft.com/azure/foundry/agents/how-to/deploy-hosted-agent-code),
-[invocation azd](https://learn.microsoft.com/en-us/azure/foundry/agents/how-to/invoke-hosted-agent),
-[événement workflow_run](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#workflow_run).
+The smoke test comes after publication. An error fails CD but triggers no automatic rollback. A single environment is used; no blue/green deployment, canary or notification system is added. Actions are pinned by SHA; `azd` and its extension stay installed at the versions their installers offer.
 
-## Déploiement sélectif (Hosted Agent)
+References: [deploying from source in Foundry](https://learn.microsoft.com/azure/foundry/agents/how-to/deploy-hosted-agent-code), [invoking with azd](https://learn.microsoft.com/en-us/azure/foundry/agents/how-to/invoke-hosted-agent), [the workflow_run event](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#workflow_run).
 
-Le planificateur `scripts/release_plan.py` utilise le registre `.github/components.json`. Après une CI réussie sur le SHA exact, il compare tout l'intervalle depuis le dernier checkpoint réussi de l'agent jusqu'au SHA testé. Les changements agent et les dépendances partagées provoquent le déploiement ; les fichiers BFF exclusifs, les tests et la documentation seuls ne le provoquent pas. Un chemin non attribué est considéré comme impactant tous les composants.
+## Selective deployment (Hosted Agent)
 
-Le workflow ne déploie que si le SHA testé est encore la tête de `main` au moment de la planification. Un run automatique devenu obsolète ne crée pas de checkpoint. La concurrence sérialise les runs ; si un run en attente est remplacé, la comparaison cumulative conserve les changements non livrés. Un run en échec n'avance pas le checkpoint. Si aucun checkpoint valable ne subsiste ou si l'historique a divergé, le planificateur prévoit un déploiement par précaution. Un déclenchement manuel sur la tête actuelle de `main` demande toujours un déploiement, avec CI réussie.
+The planner `scripts/release_plan.py` uses the registry `.github/components.json`. After a green CI on the exact SHA, it compares the whole interval from the agent's last successful checkpoint to the tested SHA. Agent changes and shared dependencies cause a deployment; backend-only files, tests and documentation alone do not. A path nobody owns is treated as affecting every component.
 
-Après succès du déploiement et du smoke test, ou après une décision explicite de ne rien déployer, un artefact `release-agent-<SHA>` garde le point de comparaison pour 90 jours. L'artefact contient le SHA, le résultat, la version si un déploiement a eu lieu, et le run ID. Un checkpoint sans déploiement ne signifie pas qu'une nouvelle version a été publiée. Voir `docs/component-cicd.md`.
+The workflow deploys only if the tested SHA is still the head of `main` when planning. An automatic run that has become stale creates no checkpoint. Concurrency serializes the runs; if a waiting run is replaced, the cumulative comparison keeps the undelivered changes. A failed run does not advance the checkpoint. If no valid checkpoint remains or the history diverged, the planner schedules a deployment as a precaution. A manual trigger on the current head of `main` always asks for a deployment, with a green CI.
 
-Sur `main`, `publish-bff.yml` construit et publie l'image BFF dans ACR après
-validation du SHA par la CI. Il ne met pas à jour Azure Container Apps.
-La publication automatique nécessite `BFF_AUTO_PUBLISH=true` ; cette variable
-est absente lors de la vérification GitHub du 20 octobre 2026. La publication
-manuelle reste possible. Voir le [workflow de publication BFF](https://github.com/boussecsou/savant-azurian/blob/main/docs/publish-bff-workflow.md).
+After a successful deployment and smoke test, or after an explicit decision to deploy nothing, a `release-agent-<SHA>` artifact keeps the comparison point for 90 days. The artifact holds the SHA, the result, the version if a deployment took place, and the run ID. A checkpoint without a deployment does not mean a new version was published. See [component delivery](component-cicd.md).
+
+On `main`, `publish-bff.yml` builds and publishes the backend image to the registry after the CI validates the SHA. It does not update Azure Container Apps. Automatic publication needs `BFF_AUTO_PUBLISH=true`; manual publication stays possible. See the [backend publication workflow](publish-bff-workflow.md).

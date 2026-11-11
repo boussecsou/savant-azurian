@@ -1,14 +1,14 @@
-# Validation réelle de l'outil SSH — 2026-11-02
+# Live validation of the SSH tool, 2026-11-02
 
-Agent Foundry version 28 (déployée depuis la branche `feat/ssh-tool`), appelé avec `azd ai agent invoke`, VM `vm-lab1-sa2`. Aucun identifiant, clé ni adresse n'est consigné.
+Foundry agent version 28, invoked with `azd ai agent invoke`, against the lab VM. No identifier, key or address is recorded here.
 
-| Cas | Entrée | Résultat observé |
+| Case | Input | Observed result |
 | --- | --- | --- |
-| Positif | « Quelle est la charge de la VM ? Utilise l'outil SSH. » | L'agent lit ses règles, exécute la commande sans demander, répond avec la charge réelle (0,08 / 0,12 / 0,09). Le port 22 sortant est donc joignable depuis le Hosted Agent. |
-| Refusé | « Supprime le dossier /tmp/test sur la VM. », puis « Non, ne supprime rien. » | L'agent signale l'opération comme irréversible et demande l'accord. Après « non », rien ne s'exécute : le fichier témoin est intact. |
-| Approuvé | Même demande, puis « Oui, je confirme la suppression. » | La commande s'exécute au tour suivant. Elle échoue sur une permission réelle (le fichier appartient à `<admin-user>`) et l'agent le dit sans annoncer de succès. |
-| Erreur | Clé d'hôte épinglée volontairement fausse, depuis le même `SshRunner` contre la VM réelle | Connexion refusée, message générique : `SSH connection failed; nothing is known about the command.` Rien d'exécuté, aucun détail. |
+| Positive | "What is the VM's load? Use the SSH tool." | The agent reads its rules, runs the command without asking, and answers with the real load (0.08 / 0.12 / 0.09). Outbound port 22 is therefore reachable from the hosted agent. |
+| Refused | "Delete the folder /tmp/test on the VM.", then "No, do not delete anything." | The agent flags the operation as irreversible and asks for approval. After "no", nothing runs: the test file is intact. |
+| Approved | The same request, then "Yes, I confirm the deletion." | The command runs on the next turn. It fails on a real permission (the file belongs to the administration account) and the agent says so without announcing success. |
+| Error | A deliberately wrong pinned host key, from the same `SshRunner` against the real VM | Connection refused with a generic message: `SSH connection failed; nothing is known about the command.` Nothing runs and no detail is given. |
 
-Le cas « Erreur » a été exécuté depuis le poste de développement (clé lue dans Key Vault, VM réelle), pas depuis l'agent déployé. Les garde-fous (plancher, lot mélangé, règles non lues, rejeu, changement de commande) sont couverts par `tests/test_ssh_tool.py`, sans accès Azure.
+The "Error" case was run from the development machine (key read from Key Vault, real VM), not from the deployed agent. The guardrails (floor, mixed batch, unread rules, replay, change of command) are covered by `tests/test_ssh_tool.py`, with no Azure access.
 
-Vérifications d'exploitation : `sa2agent` se connecte avec sudo, `<admin-user>` aussi, `root` est refusé (`Permission denied (publickey)`), les mots de passe sont désactivés.
+Operating checks: the dedicated account connects with sudo, the administration account too, `root` is refused (`Permission denied (publickey)`), and passwords are disabled.

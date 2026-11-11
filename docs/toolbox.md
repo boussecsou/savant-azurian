@@ -1,77 +1,48 @@
-# Toolbox Foundry de Savant
+# The Foundry Toolbox
 
-Le runtime consomme la toolbox existante `toolbox-lab-1` via son endpoint
-consommateur. `azure.yaml` configure cette URL stable dans `TOOLBOX_ENDPOINT`.
-Elle suit la version publiée par défaut (`default_version`).
-Le modèle Azure OpenAI existant reste utilisé ; l'exemple `model-router`
-n'est pas une obligation pour connecter une toolbox.
+The runtime consumes a toolbox through its consumer endpoint. `azure.yaml` sets that stable URL in `TOOLBOX_ENDPOINT`, which follows the published default version (`default_version`). The deployed toolbox is a web one: web search and the code interpreter. The existing Azure OpenAI model stays in use; the `model-router` example is not an obligation to connect a toolbox.
 
-Pour tester localement, ajouter à `.env` :
+## Creating the toolbox
+
+The `sa2-web` toolbox (name set by the `toolboxName` parameter of the Bicep template, `TOOLBOX_ENDPOINT` already points at it) is created in the Foundry data plane, not in Bicep:
+
+1. In the Foundry portal, open the project, create a toolbox named `sa2-web` and add the **web search** and **code interpreter** tools. Do not add a source that needs a user connection you have not consented to.
+2. Publish the version as the **default version**: the consumer endpoint serves only the default version.
+3. Or use the CLI. `azd ai toolbox` has `create`, `publish`, `list`, `show` and `delete` subcommands; run `azd ai toolbox create --help` for the exact flags of your `azd` extension version. (They were not exercised while writing this page.)
+
+A toolbox that includes an Outlook source was tried and set aside: that source made `tools/list` fail for the backend's caller and took the whole toolbox down. See [outlook-tool.md](outlook-tool.md). To run without a toolbox: `azd env set TOOLBOX_ENDPOINT ""`.
+
+## Local use
+
+To test locally, add to `.env`:
 
 ```dotenv
-TOOLBOX_ENDPOINT=https://fp-savant-azurian-2-resource.services.ai.azure.com/api/projects/fp-savant-azurian-2/toolboxes/toolbox-lab-1/mcp?api-version=v1
+TOOLBOX_ENDPOINT=https://<account>.services.ai.azure.com/api/projects/<project>/toolboxes/<toolbox-name>/mcp?api-version=v1
 NOTION_MCP_ENABLED=false
 ```
 
-Le project endpoint est extrait de cette URL pour le checkpoint Foundry.
-Le mode Toolbox expose tous les outils découverts, ainsi que `echo`, sans
-nécessiter les listes Notion. Les deux modes sont exclusifs. La découverte
-s'effectue dans les nœuds du graphe, sous le contexte utilisateur de la requête,
-sans appel réseau au démarrage ni cache partagé entre utilisateurs.
+The project endpoint is extracted from this URL for the Foundry checkpoint. Toolbox mode exposes every tool discovered, plus `echo`, without needing the Notion lists. The two modes are exclusive. Discovery happens in the graph's nodes, under the user context of the request, with no network call at startup and no cache shared between users.
 
-Les outils marqués `require_approval=always` par la toolbox passent par notre
-interruption LangGraph avant exécution. Les éventuels noms dans
-`NOTION_WRITE_TOOL_NAMES` restent également protégés. Ce mode ne déduit pas
-les écritures à partir du nom : configurer les approbations dans la toolbox.
-Le consentement OAuth reste distinct et ses instructions sont affichées à
-l'utilisateur lorsqu'il est nécessaire.
+Tools that the toolbox marks `require_approval=always` go through our LangGraph interruption before execution. Any names in `NOTION_WRITE_TOOL_NAMES` stay protected too. This mode does not infer writes from the name: configure approvals in the toolbox. OAuth consent stays distinct, and its instructions are shown to the user when needed. Each call is also judged by name in `tools/toolbox_policy.py`: web search and direct reads run, while the code interpreter, send and delete tools and any unknown tool go through semantic consent ([ADR-0017](adr/0017-two-layer-authorization-for-notion-writes.md)).
 
-## Compatibilité du SDK installé
+## Installed SDK compatibility
 
-`langchain-azure-ai` installé ne possède pas de paramètre `toolbox_version`.
-`EndpointToolbox` surcharge la propriété `toolbox_endpoint` pour utiliser
-l'URL configurée, consommateur ou versionnée, y compris pour la découverte
-des approbations.
+The installed `langchain-azure-ai` has no `toolbox_version` parameter. `EndpointToolbox` overrides the `toolbox_endpoint` property to use the configured URL, consumer or versioned, including for approval discovery.
 
-Son transport historique utilise `langchain-mcp-adapters`, qui importe
-`RequestContext` supprimé de MCP 2. Le backend direct existant utilise
-`langchain[mcp]`, qui exige MCP 2 : épingler MCP 1 casserait ce backend.
-Notre adaptateur utilise donc `fastmcp.Client` et `langchain.mcp.MCPAdapter`,
-comme le backend direct, en conservant l'authentification, le renouvellement
-du token, les headers de contexte Foundry et la gestion du consentement du SDK.
-L'auth SDK est adaptée au type `httpx2.Auth` utilisé par FastMCP 4.
+Its historical transport uses `langchain-mcp-adapters`, which imports `RequestContext`, removed in MCP 2. The existing direct backend uses `langchain[mcp]`, which requires MCP 2: pinning MCP 1 would break that backend. Our adapter therefore uses `fastmcp.Client` and `langchain.mcp.MCPAdapter`, like the direct backend, keeping the SDK's authentication, token renewal, Foundry context headers and consent handling. The SDK auth is adapted to the `httpx2.Auth` type used by FastMCP 4.
 
-Références : [intégration officielle Toolbox](https://learn.microsoft.com/en-us/azure/foundry/agents/how-to/tools/toolbox),
-[incompatibilité MCP 2](https://github.com/langchain-ai/langchain-mcp-adapters/issues/589),
-[nouvel adaptateur LangChain](https://github.com/langchain-ai/langchain/issues/40072).
+References: [official Toolbox integration](https://learn.microsoft.com/en-us/azure/foundry/agents/how-to/tools/toolbox), [MCP 2 incompatibility](https://github.com/langchain-ai/langchain-mcp-adapters/issues/589), [new LangChain adapter](https://github.com/langchain-ai/langchain/issues/40072).
 
-La modification du manifeste ne met pas à jour l'agent déjà déployé.
-Il faut publier une nouvelle version pour utiliser cette configuration dans
-le Playground. La découverte locale ne prouve pas à elle seule le consentement
-ni l'accès de l'utilisateur via le Hosted Agent.
+Changing the manifest does not update the agent that is already deployed. Publish a new version to use this configuration in the playground. Local discovery alone does not prove consent or the user's access through the Hosted Agent.
 
-## Déploiement et consentement personnel
+## Deployment and personal consent
 
-La CD teste le runtime et le vrai modèle avec une requête dédiée sans tools.
-Elle ne demande aucun consentement pour l'identité du pipeline. L'utilisateur
-termine OAuth manuellement dans une conversation normale du Playground.
-Une CD verte ne constitue pas une validation opérationnelle de Notion.
-Voir `docs/cd-workflow.md` pour le contrôle exact et ses limites.
+CD tests the runtime and the real model with a dedicated request that uses no tools. It asks for no consent for the pipeline's identity. The user finishes OAuth manually in a normal playground conversation. A green CD is not an operational validation of Notion. See [cd-workflow.md](cd-workflow.md) for the exact check and its limits.
 
-## Modifier la toolbox sans redéployer l'agent
+## Changing the toolbox without redeploying the agent
 
-Modifier les outils crée une nouvelle version immuable. La publier comme
-version par défaut rend cette version disponible via l'endpoint consommateur.
-Créer ou sauvegarder une version sans la promouvoir ne change pas les outils
-servis à l'agent. Le graphe redécouvre les outils et leurs approbations dans ses
-nœuds ; il ne conserve pas de liste figée entre requêtes.
+Changing the tools creates a new immutable version. Publishing it as the default version makes it available through the consumer endpoint. Creating or saving a version without promoting it does not change the tools served to the agent. The graph rediscovers the tools and their approvals in its nodes; it keeps no list frozen between requests.
 
-Après le déploiement initial de ce changement d'endpoint, les publications
-suivantes ne nécessitent aucune modification de code ni aucun redéploiement
-de Savant. Éviter de publier au milieu d'une opération avec des tools : une
-version différente peut être découverte entre la décision et l'exécution.
-Tester les nouvelles configurations dans une nouvelle conversation. Un nouvel
-outil ou une nouvelle connexion peut nécessiter un consentement personnel.
+After the initial deployment of this endpoint change, later publications need no code change and no redeployment of Savant. Avoid publishing in the middle of an operation with tools: a different version can be discovered between the decision and the execution. Test new configurations in a new conversation. A new tool or a new connection can need a personal consent.
 
-Une URL `/versions/<n>/mcp` reste acceptée pour tester une version précise,
-mais ne suit pas les publications suivantes.
+A `/versions/<n>/mcp` URL stays accepted for testing a precise version, but does not follow later publications.

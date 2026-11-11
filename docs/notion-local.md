@@ -1,101 +1,74 @@
-# Tester Notion MCP en local
+# Testing the Notion MCP server locally
 
-Le graphe LangGraph existant reçoit les outils du serveur officiel Notion via
-`langchain.mcp.MCPAdapter`. `ToolNode` exécute ces outils sans modifier leurs
-schémas, résultats structurés ou erreurs MCP. Les écritures configurées demandent
-une approbation avant chaque appel. Il n’y a aucune restriction à une page donnée :
-les droits de ton compte OAuth Notion déterminent les pages accessibles.
+The existing LangGraph graph receives the tools of the official Notion server through `langchain.mcp.MCPAdapter`. `ToolNode` runs these tools without changing their schemas, structured results or MCP errors. Configured writes ask for approval before each call. There is no restriction to a given page: the rights of your Notion OAuth account determine which pages are accessible.
 
-## Préparer la connexion
+## Prepare the connection
 
-Installer les dépendances verrouillées :
+Install the locked dependencies:
 
 ```bash
 uv sync --locked --group dev
 ```
 
-Depuis un terminal local, découvrir les noms exacts des outils disponibles :
+From a local terminal, discover the exact names of the available tools:
 
 ```bash
 uv run --locked python -m savant.tools.notion
 ```
 
-Cette commande ouvre le navigateur pour te connecter à Notion, puis affiche le
-catalogue d’outils. Elle ne lit ni ne modifie de page et ne contacte pas Azure.
+This command opens the browser so you can sign in to Notion, then prints the tool catalogue. It neither reads nor changes a page and does not contact Azure.
 
-Si l’ouverture automatique affiche `gio: Operation not supported`, ouvrir
-manuellement l’URL d’autorisation affichée dans le terminal, en gardant la commande
-active. Le callback `localhost` doit être accessible depuis ce navigateur.
+If the automatic opening prints `gio: Operation not supported`, open the authorization URL printed in the terminal by hand, keeping the command running. The `localhost` callback must be reachable from that browser.
 
-L’inscription OAuth demande explicitement le mode client public `none` avec PKCE,
-accepté par Notion. Cela évite le défaut du SDK MCP qui duplique `client_id` dans
-les requêtes utilisant HTTP Basic
-([issue du SDK](https://github.com/modelcontextprotocol/python-sdk/issues/3138)).
+The OAuth registration explicitly asks for the public client mode `none` with PKCE, which Notion accepts. This avoids the MCP SDK's defect of duplicating `client_id` in requests that use HTTP Basic ([SDK issue](https://github.com/modelcontextprotocol/python-sdk/issues/3138)).
 
-Dans ton `.env` local, garder les variables Azure OpenAI existantes et ajouter :
+In your local `.env`, keep the existing Azure OpenAI variables and add:
 
 ```dotenv
 NOTION_MCP_ENABLED=true
 NOTION_MCP_URL=https://mcp.notion.com/mcp
-NOTION_READ_TOOL_NAMES=NOMS_EXACTS_DES_OUTILS_DE_LECTURE_SEPARES_PAR_DES_VIRGULES
-NOTION_WRITE_TOOL_NAMES=NOMS_EXACTS_DES_OUTILS_D_ECRITURE_SEPARES_PAR_DES_VIRGULES
+NOTION_READ_TOOL_NAMES=EXACT_NAMES_OF_THE_READ_TOOLS_SEPARATED_BY_COMMAS
+NOTION_WRITE_TOOL_NAMES=EXACT_NAMES_OF_THE_WRITE_TOOLS_SEPARATED_BY_COMMAS
 ```
 
-Placer les outils de recherche/lecture dans la première liste, et ceux qui
-modifient Notion dans la seconde. Un même nom ne peut pas apparaître dans les deux.
-Laisser la seconde vide permet de tester seulement la lecture. Les outils absents
-des listes ne sont pas exposés au modèle ; un nom inconnu fait échouer le démarrage
-avec les noms proposés par le serveur.
+Put the search and read tools in the first list, and those that change Notion in the second. A name cannot appear in both. Leaving the second list empty lets you test reading only. Tools missing from the lists are not exposed to the model; an unknown name makes startup fail with the names the server offers.
 
-## Lancer et lire une page
+## Start, then read a page
 
 ```bash
 uv run --locked python main.py
 ```
 
-Le démarrage demande la connexion OAuth Notion avant d’ouvrir le serveur. Les
-tokens OAuth restent en mémoire : il faut se reconnecter après chaque redémarrage,
-y compris après la commande de découverte du catalogue. Le modèle utilise
-l’authentification Azure existante ; aucune commande de connexion ou de déploiement
-Azure n’est lancée par cette intégration.
+Startup asks for the Notion OAuth connection before opening the server. The OAuth tokens stay in memory: you must reconnect after every restart, including after the catalogue discovery command. The model uses the existing Azure authentication; this integration runs no Azure sign-in or deployment command.
 
-Dans un second terminal :
+In a second terminal:
 
 ```bash
 curl --fail-with-body http://localhost:8088/responses \
   -H 'Content-Type: application/json' \
-  -d '{"input":"Lis cette page Notion et résume-la : https://app.notion.com/p/3eceba09656f80ce9afde9a578089703","stream":false}'
+  -d '{"input":"Read this Notion page and summarize it: https://www.notion.so/<your-page-url>","stream":false}'
 ```
 
-## Tester une écriture avec approbation
+## Test a write with approval
 
-Demander une petite modification sur une page de ton choix, par exemple ajouter
-un paragraphe « Test local Savant Azurian 2 ». L’agent retourne une sortie
-`mcp_approval_request`. Son champ `arguments` contient le nom de l’outil, ses
-arguments exacts et l’identifiant de l’appel, dans l’enveloppe d’interruption
-LangGraph. Vérifier ces arguments avant de répondre.
+Ask for a small change on a page of your choice, for example adding a paragraph "Local test". The agent returns an `mcp_approval_request` output. Its `arguments` field holds the tool name, its exact arguments and the call identifier, in the LangGraph interruption envelope. Check these arguments before answering.
 
-Reprendre avec l’identifiant `id` de cette sortie et le `id` de la réponse initiale :
+Resume with the `id` of that output and the `id` of the initial response:
 
 ```bash
 curl --fail-with-body http://localhost:8088/responses \
   -H 'Content-Type: application/json' \
-  -d '{"previous_response_id":"ID_DE_LA_REPONSE","input":[{"type":"mcp_approval_response","approval_request_id":"ID_DE_LA_DEMANDE","approve":true}],"stream":false}'
+  -d '{"previous_response_id":"RESPONSE_ID","input":[{"type":"mcp_approval_response","approval_request_id":"REQUEST_ID","approve":true}],"stream":false}'
 ```
 
-Avec `approve:false`, le serveur signale `interrupt_rejected` et n’exécute pas
-l’écriture. Les interruptions et conversations restent en mémoire pour ce test
-local et disparaissent au redémarrage du processus.
+With `approve:false`, the server reports `interrupt_rejected` and does not run the write. Interruptions and conversations stay in memory for this local test and disappear when the process restarts.
 
-## Validation automatique
+This is the local test of the generic approval path. In production, Notion writes go through the conversational consent described in [notion-semantic-approval.md](notion-semantic-approval.md).
+
+## Automatic validation
 
 ```bash
 uv run --locked pytest
 ```
 
-Les tests utilisent des modèles et transports simulés : ils couvrent le câblage,
-les listes d’outils, les résultats et erreurs MCP, et l’approbation/refus des
-écritures. La connexion OAuth et les appels réels à Notion sont à vérifier avec
-le test local ci-dessus. L’intégration est désactivée par défaut dans
-`.env.example`. Aucun changement de configuration Azure ou de déploiement n’est
-nécessaire pour cette étape.
+The tests use simulated models and transports: they cover the wiring, the tool lists, MCP results and errors, and the approval or refusal of writes. The OAuth connection and the real calls to Notion are to be checked with the local test above. The integration is disabled by default in `.env.example`. No Azure configuration or deployment change is needed for this step.
