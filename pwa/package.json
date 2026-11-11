@@ -9,7 +9,9 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "dev:mock": "node dev/dev-mock.mjs",
+    "mock": "node dev/mock-bff.mjs"
   },
   "dependencies": {
     "microsoft-cognitiveservices-speech-sdk": "^1.53.0",
