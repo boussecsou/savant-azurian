@@ -92,7 +92,7 @@ azure-identity==1.25.3
     #   savant-azurian-2
 azure-keyvault-secrets==4.11.3
     # via savant-azurian-2
-azure-monitor-opentelemetry-exporter==1.0.0b57
+azure-monitor-opentelemetry-exporter==1.0.0b59
     # via microsoft-opentelemetry
 azure-search-documents==12.0.0
     # via langchain-azure-ai
