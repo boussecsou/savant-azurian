@@ -226,7 +226,7 @@ jiter==0.17.0
     # via
     #   anthropic
     #   openai
-joserfc==1.7.5
+joserfc==1.7.6
     # via
     #   authlib
     #   fastmcp-slim
