@@ -329,7 +329,7 @@ openai==3.15.0
     #   langchain-openai
 openapi-pydantic==0.5.1
     # via fastmcp-slim
-opentelemetry-api==1.44.0
+opentelemetry-api==1.45.2
     # via
     #   azure-ai-agentserver-core
     #   azure-core-tracing-opentelemetry
