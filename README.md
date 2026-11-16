@@ -8,7 +8,7 @@
 
 # Savant Azurian
 
-**A voice-first personal AI agent on Microsoft Azure, built so that it can act on your behalf and still ask first.**
+**A voice-first personal AI agent for Microsoft Azure, built with LangGraph and Microsoft Foundry.**
 
 [![CI](https://github.com/boussecsou/savant-azurian/actions/workflows/ci.yml/badge.svg)](https://github.com/boussecsou/savant-azurian/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
@@ -18,21 +18,21 @@
 
 </div>
 
-Savant Azurian is a single-owner assistant you talk to or type to. It reads and writes your Notion workspace, runs commands on a Linux VM, searches your project documents and the web, and answers by voice. The interesting part is what happens *before* it acts: every change goes through independent checks, so a confused or manipulated model cannot do damage on its own.
+Savant Azurian is a single-owner assistant that you talk to or type to. It reads and writes a Notion workspace, runs commands on a Linux VM, searches project documents and the web, and answers by voice. Anything that changes something goes through independent checks before it runs.
 
-It is a complete system, not a demo: a LangGraph agent on a Foundry hosted agent, a FastAPI backend on Azure Container Apps, a React web client with a voice interface, infrastructure as code, and CI/CD that delivers each component independently.
+The repository holds the whole system: a LangGraph agent on a Foundry hosted agent, a FastAPI backend on Azure Container Apps, a React web client with a voice interface, the infrastructure as code, and the design documentation.
 
-## What makes it different
+## Design highlights
 
 | | |
 | --- | --- |
-| **Two independent authorization layers** | OAuth authorizes a Notion workspace. A separate semantic judge, a single-use encrypted ledger and a server-written question authorize *one precise operation*. Neither replaces the other. [ADR-0017](docs/adr/0017-two-layer-authorization-for-notion-writes.md) |
-| **A judge for every shell command** | A second model call returns `RUN`, `CONFIRM` or `REFUSE`; a confirmed command runs only on a later user turn, once, with the same fingerprint. Measured in pass^k. [ADR-0018](docs/adr/0018-ssh-tool-with-a-semantic-command-judge.md) |
-| **Outside content is data** | Web pages, Notion pages and tool results are marked untrusted; the real locks are the judges, not the prompt. [ADR-0019](docs/adr/0019-external-content-is-data.md) |
-| **No keys anywhere** | Entra ID and managed identities for every service, three secrets in Key Vault, and OIDC for CI. [ADR-0020](docs/adr/0020-keyless-access-with-entra-and-key-vault.md) |
+| **Two authorization layers** | OAuth authorizes a Notion workspace. A separate semantic judge, a single-use encrypted ledger and a server-written question authorize *one precise operation*. Neither replaces the other. [ADR-0017](docs/adr/0017-two-layer-authorization-for-notion-writes.md) |
+| **Command judge** | Every shell command is judged by a second model call (`RUN`, `CONFIRM` or `REFUSE`); a confirmed command runs only on a later user turn, once, with the same fingerprint. Evaluated in pass^k. [ADR-0018](docs/adr/0018-ssh-tool-with-a-semantic-command-judge.md) |
+| **Outside content as data** | Web pages, Notion pages and tool results are marked untrusted; the real locks are the judges, not the prompt. [ADR-0019](docs/adr/0019-external-content-is-data.md) |
+| **Keyless access** | Entra ID and managed identities for every service, three secrets in Key Vault, and OIDC for CI. [ADR-0020](docs/adr/0020-keyless-access-with-entra-and-key-vault.md) |
 | **Per-project retrieval** | Azure AI Search with the project filter imposed by the server, never chosen by the model. [ADR-0021](docs/adr/0021-per-project-document-retrieval.md) |
-| **Honest by construction** | Fail closed, bounded tool calls, and an interface that shows only what exists. [ADR-0022](docs/adr/0022-bounded-tool-execution.md), [ADR-0013](docs/adr/0013-interface-shows-only-what-exists.md) |
-| **Decisions on record** | 22 architecture decision records, 5 design documents and 2 specifications. [Design record](docs/design/README.md) |
+| **Fail-closed behaviour** | Missing identity or an invalid verdict means no write; tool calls are bounded; the interface shows only what exists. [ADR-0022](docs/adr/0022-bounded-tool-execution.md), [ADR-0013](docs/adr/0013-interface-shows-only-what-exists.md) |
+| **Documented decisions** | 23 architecture decision records, 5 design documents and 2 specifications. [Design record](docs/design/README.md) |
 
 ## Architecture
 
@@ -76,6 +76,7 @@ You need [uv](https://docs.astral.sh/uv/), Node 22 and, optionally, [just](https
 git clone https://github.com/boussecsou/savant-azurian.git
 cd savant-azurian
 
+just doctor         # are the tools in place?
 just setup          # or: uv sync --locked --group dev && (cd pwa && npm ci)
 just check          # lint, documentation check, Python tests, web tests and build
 
@@ -105,7 +106,7 @@ azd env new savant-dev
 azd provision --preview     # see what would be created, change nothing
 ```
 
-The [deployment guide](docs/deployment.md) walks through every step (about an hour the first time), with the role matrix, troubleshooting, costs and teardown. **It has not yet been validated against a real subscription**: see [project status](docs/status.md).
+The [deployment guide](docs/deployment.md) walks through every step (about an hour the first time), with the role matrix, troubleshooting, costs and teardown. The template compiles and lints cleanly in CI, but **it has not yet been deployed to a real subscription**: see [project status](docs/status.md).
 
 ## Repository layout
 
@@ -131,7 +132,7 @@ savant-azurian/
 - **CI on every change:** locked dependencies, `ruff`, the Python suite (no test touches Azure), a documentation check, a secrets scan of the whole history, the backend image build and smoke test, and the web client's tests and build.
 - **Component-aware delivery:** the agent and the backend are delivered independently from one registry of ownership; publishing an image does not roll it out. [SDD-004](docs/design/sdd-004-continuous-integration-and-delivery.md)
 - **Everything pinned:** actions by commit SHA, Python by `uv.lock`, a generated `requirements.txt` that CI keeps in step.
-- **Measured, not assumed:** the consent judge and the command judge have evaluation datasets scored in pass^k on the production model.
+- **Evaluated:** the consent judge and the command judge have evaluation datasets scored in pass^k on the production model.
 - **Documented and checked:** every setting has a row in one table, every decision an ADR, and links, anchors and ADR format are verified in CI.
 - **Conventional Commits**, small pull requests, squash merges. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
@@ -143,7 +144,7 @@ savant-azurian/
 | [User guide](docs/user-guide.md) | Using the web client: chat, voice, projects, documents, settings |
 | [Deployment guide](docs/deployment.md) | Create your own Azure environment with Bicep and `azd` |
 | [Configuration reference](docs/configuration.md) | Every variable and secret, and where each one lives |
-| [Design record](docs/design/README.md) | Specifications, design documents and [22 architecture decision records](docs/adr/README.md) |
+| [Design record](docs/design/README.md) | Specifications, design documents and [23 architecture decision records](docs/adr/README.md) |
 | [Project status](docs/status.md) | What is delivered, what is validated and what is not |
 | [Development conventions](AGENTS.md) | Repository engineering rules |
 
