@@ -8,12 +8,16 @@ updates:
       actions: { patterns: ["*"] }
   - package-ecosystem: uv
     directory: /
-    schedule: { interval: weekly }
+    # Monthly: a lockfile change also needs `just export-requirements` on the branch (see CONTRIBUTING.md).
+    schedule: { interval: monthly }
     commit-message: { prefix: "chore(deps)" }
-    # A major version is a decision, not a chore: take it by hand.
     ignore:
+      # A major version is a decision, not a chore: take it by hand.
       - dependency-name: "*"
         update-types: ["version-update:semver-major"]
+      # Pinned by langchain-azure-ai: newer betas make the lockfile unsatisfiable.
+      - dependency-name: opentelemetry-instrumentation-openai-v2
+      - dependency-name: opentelemetry-util-genai
     groups:
       python-minor-and-patch: { update-types: [minor, patch] }
   - package-ecosystem: npm
