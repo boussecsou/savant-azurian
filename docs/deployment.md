@@ -2,17 +2,14 @@
 
 How to stand up your own copy of Savant Azurian in Azure, from an empty subscription to a working agent, with Bicep and the Azure Developer CLI (`azd`). Everything personal (names, IDs, URLs) comes from your own `azd` environment: nothing personal is stored in the repository. Every variable is described in the [configuration reference](configuration.md); the reasoning behind the choices is in [ADR-0023](adr/0023-infrastructure-as-code-with-bicep-and-azd.md). A [PDF version](deployment.pdf) is generated from this page (`just docs-pdf`).
 
-> **Status: not yet validated against a real subscription, and the Bicep was not compiled.** `infra/` was written from the Azure and Foundry documentation. The Bicep compiler could not be installed in the environment where this was written, so `bicep build` has never run. Treat the first deployment as a validation: start with `azd provision --preview`, and fix what the compiler or the preview reports. The points most likely to need a fix are in [What to verify first](#what-to-verify-first). Remove this note after a clean deployment.
+> **Status: compiles and lints cleanly (Bicep 0.49), not yet deployed to a real subscription.** `infra/` was written from the Azure and Foundry documentation. `just infra-check` (also run by CI) builds and lints every module and the parameter file, which validates syntax, types and the API schemas, but not what Azure accepts at deployment time. Treat the first deployment as a validation: start with `azd provision --preview`. The points most likely to need a fix are in [What to verify first](#what-to-verify-first). Remove this note after a clean deployment.
 
 ## The short version
 
 ```bash
-azd auth login
-azd env new savant-dev
-azd env set AZURE_LOCATION <region>
-azd env set AZURE_SUBSCRIPTION_ID <subscription-id>
-azd env set NOTION_OWNER_ID "$(python3 -c 'import uuid; print(uuid.uuid4())')"
-azd env set BFF_OWNER_OBJECT_ID "$(az ad signed-in-user show --query id -o tsv)"
+just doctor                                 # are the tools in place?
+azd auth login && az login
+scripts/setup/init-env.sh --name savant-dev --location <region> --apply   # the azd environment, in one step
 
 azd provision --preview && azd provision        # resources and most roles
 scripts/setup/generate-notion-key.sh --apply     # the key goes straight to Key Vault
@@ -65,6 +62,14 @@ Every script in `scripts/setup/` is a **dry run** until you add `--apply`: it pr
 ## Step by step
 
 ### 1. Create the environment
+
+The script does the six commands below in one go (a dry run until you add `--apply`):
+
+```bash
+scripts/setup/init-env.sh --name <name> --location <region> [--github-repo <owner>/<repo>] --apply
+```
+
+Or by hand:
 
 ```bash
 azd auth login
@@ -257,7 +262,7 @@ This deletes the resource group and purges the soft-deleted Key Vault and AI Ser
 
 This template has not met a real subscription yet. On the first run, check:
 
-1. **`bicep build` and `azd provision --preview`** compile and list what you expect. Fix any API-version or property error they report.
+1. **`azd provision --preview`** lists what you expect. The template already compiles and lints cleanly, so what remains are errors only Azure can report: a region, a quota, a name that is taken, a property a service refuses.
 2. **`azd` with `azure.yaml`.** The `ai-project` service uses `host: azure.ai.project` with an `endpoint` from the environment, next to an `infra:` block. Confirm `azd provision` and `azd deploy` accept that combination, and that `${VAR}` substitution works for the `endpoint` field and for variables left empty (the SSH ones).
 3. **Hosted agent prerequisites.** Check with the Foundry documentation whether a hosted agent needs anything the template does not create (for example a capability host or a registry connection). A project created in the portal worked with the same account and project resources.
 4. **Region and quota** for the chat model, embedding model and hosted agents.

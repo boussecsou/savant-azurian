@@ -105,6 +105,30 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+  infra:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install the Bicep compiler
+        run: az bicep install
+
+      - name: Build and lint the template and its modules
+        run: |
+          az bicep build --file infra/main.bicep --stdout > /dev/null
+          for module in infra/main.bicep infra/modules/*.bicep; do
+            output="$(az bicep lint --file "$module" 2>&1)"
+            if [ -n "$output" ]; then echo "$output"; exit 1; fi
+          done
+
+      - name: Build the parameter file
+        env:
+          AZURE_ENV_NAME: savant-ci
+          AZURE_LOCATION: italynorth
+        run: az bicep build-params --file infra/main.bicepparam --stdout > /dev/null
+
   bff:
     needs: changes
     if: needs.changes.outputs.bff_ci == 'true'

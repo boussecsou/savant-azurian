@@ -41,7 +41,7 @@ Every Azure resource of the project was created by hand in the portal, which was
 
 **Negative / risks**
 
-- **Not yet validated against a real subscription.** The status of this ADR changes to Accepted when a clean deployment has been done. Several points need checking first: how `azd` combines an `infra:` block with the Foundry project service, what a hosted agent needs beyond an account and a project, and the model's availability in the chosen region. They are listed in the [deployment guide](../deployment.md#what-to-verify-first).
+- **Compiles and lints cleanly, but not yet validated against a real subscription.** The status of this ADR changes to Accepted when a clean deployment has been done. Several points need checking first: how `azd` combines an `infra:` block with the Foundry project service, what a hosted agent needs beyond an account and a project, and the model's availability in the chosen region. They are listed in the [deployment guide](../deployment.md#what-to-verify-first).
 - The first deployment is a validation, so it should start with `azd provision --preview`.
 
 ## Related

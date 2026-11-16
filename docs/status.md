@@ -26,7 +26,7 @@ Last reviewed: 2026-11-11.
 
 | Item | State |
 | --- | --- |
-| Infrastructure as code (`infra/`) | Written from the Azure and Foundry documentation. **Not yet compiled by a Bicep compiler in the environment where it was written, and never deployed.** [ADR-0023](adr/0023-infrastructure-as-code-with-bicep-and-azd.md) stays *Proposed* until a clean deployment. See [what to verify first](deployment.md#what-to-verify-first) |
+| Infrastructure as code (`infra/`) | Written from the Azure and Foundry documentation. **It compiles and lints cleanly (checked by CI), and has never been deployed.** [ADR-0023](adr/0023-infrastructure-as-code-with-bicep-and-azd.md) stays *Proposed* until a clean deployment. See [what to verify first](deployment.md#what-to-verify-first) |
 | `scripts/setup/` | The dry-run paths were exercised against a fake `azd`. The `--apply` paths have never run |
 | Dev container | Not built in the environment where it was written |
 | Mock backend (`npm run dev:mock`) | Tested (`pwa/dev/mock-bff.test.ts`) and run locally |

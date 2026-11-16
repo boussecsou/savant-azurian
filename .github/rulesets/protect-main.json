@@ -29,6 +29,7 @@
           { "context": "lint" },
           { "context": "docs" },
           { "context": "secrets" },
+          { "context": "infra" },
           { "context": "bff" },
           { "context": "pwa" }
         ]
