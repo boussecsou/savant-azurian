@@ -56,7 +56,10 @@ jobs:
       - name: Verify deployment dependencies match the lockfile
         run: |
           uv export --locked --no-dev --no-emit-project --no-hashes --format requirements-txt --output-file requirements.txt > /dev/null
-          git diff --exit-code -- requirements.txt
+          if ! git diff --exit-code -- requirements.txt; then
+            echo "::error::requirements.txt is out of date with uv.lock. Run 'just export-requirements' (or the uv export command in AGENTS.md) and commit the result."
+            exit 1
+          fi
 
       - name: Run tests
         run: uv run --locked pytest
