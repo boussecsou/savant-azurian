@@ -61,8 +61,16 @@ def run(command: list[str]) -> str | None:
     return (done.stdout + done.stderr) if done.returncode == 0 else None
 
 
-def check_python(version: tuple[int, ...] = tuple(sys.version_info[:3])) -> tuple[bool, str]:
-    return version >= (3, 13), f"Python {'.'.join(map(str, version))} (3.13 required)"
+def check_python(
+    version: tuple[int, ...] = tuple(sys.version_info[:3]), uv_available: bool = False
+) -> tuple[bool, str]:
+    """Python 3.13 is required, but uv provides it by itself, so an older system Python is fine with uv."""
+    found = ".".join(map(str, version))
+    if version >= (3, 13):
+        return True, f"Python {found}"
+    if uv_available:
+        return True, f"system Python {found}; uv provides 3.13 automatically"
+    return False, f"Python {found} (3.13 required, or install uv)"
 
 
 def check_tool(tool: Tool, runner: Runner = run) -> tuple[bool, str]:
@@ -87,7 +95,7 @@ def check_foundry_extension(runner: Runner = run) -> tuple[bool, str]:
 
 def report(runner: Runner = run) -> tuple[list[str], bool]:
     lines, failed = [], False
-    ok, detail = check_python()
+    ok, detail = check_python(uv_available=check_tool(TOOLS[0], runner)[0])
     lines.append(f"{'ok ' if ok else 'FAIL'}  python      {detail}")
     failed |= not ok
     for tool in TOOLS:

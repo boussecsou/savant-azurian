@@ -36,3 +36,4 @@ def test_only_a_missing_required_tool_fails_the_report():
 def test_the_python_requirement():
     assert doctor.check_python((3, 13, 1))[0] is True
     assert doctor.check_python((3, 12, 9))[0] is False
+    assert doctor.check_python((3, 12, 9), uv_available=True)[0] is True
