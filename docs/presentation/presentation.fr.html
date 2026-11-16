@@ -1,0 +1,415 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Savant Azurian — présentation du projet</title>
+<style>
+@font-face { font-family: "Inter"; font-weight: 100 900; src: url("fonts/inter-latin-wght-normal.woff2") format("woff2"); unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+2000-206F, U+2074, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+@font-face { font-family: "Inter"; font-weight: 100 900; src: url("fonts/inter-latin-ext-wght-normal.woff2") format("woff2"); unicode-range: U+0100-02AF, U+0304, U+0308, U+0329, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20CF, U+2113, U+2C60-2C7F, U+A720-A7FF; }
+@font-face { font-family: "JetBrains Mono"; font-weight: 400; src: url("fonts/jbmono-400.woff2") format("woff2"); }
+@font-face { font-family: "JetBrains Mono"; font-weight: 600; src: url("fonts/jbmono-600.woff2") format("woff2"); }
+
+:root {
+  --bg: #08080b; --bg-2: #0c0c10; --surface: #121218; --surface-2: #1a1a22; --surface-3: #23232d;
+  --text: #f3f3f6; --text-2: #a8a8b8; --text-3: #7f7f90;
+  --line: rgba(255,255,255,.09); --line-2: rgba(255,255,255,.16);
+  --a: #6c80f2; --b: #9479ea; --accent-text: #aab4ff;
+  --ok: #52c58c; --warn: #dfb35b; --err: #f08585;
+  --grad: linear-gradient(135deg, var(--a), var(--b));
+  --mono: "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace;
+}
+@page { size: 1280px 720px; margin: 0; }
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+body { background: var(--bg); color: var(--text); font: 400 19px/1.5 "Inter", system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+a { color: var(--accent-text); text-decoration: none; }
+
+.page { position: relative; width: 1280px; height: 720px; overflow: hidden; page-break-after: always; break-after: page;
+  background: radial-gradient(900px 500px at 105% -10%, rgba(132,122,240,.16), transparent 60%), var(--bg); padding: 44px 64px 0; }
+.page:last-child { page-break-after: auto; break-after: auto; }
+
+.kicker { font: 600 14px/1 var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--accent-text); display: flex; align-items: center; gap: 12px; }
+.kicker::before { content: ""; width: 28px; height: 2px; background: var(--grad); border-radius: 2px; }
+h1 { font-size: 40px; line-height: 1.12; letter-spacing: -.025em; font-weight: 700; margin-top: 16px; max-width: 1040px; }
+h1 em { font-style: normal; background: var(--grad); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.lead { color: var(--text-2); font-size: 20px; margin-top: 12px; max-width: 980px; }
+
+.foot { position: absolute; left: 64px; right: 64px; bottom: 0; height: 52px; display: flex; align-items: center; justify-content: space-between;
+  border-top: 1px solid var(--line); font: 400 13px/1 var(--mono); color: var(--text-3); letter-spacing: .04em; }
+.foot .brand { display: flex; align-items: center; gap: 10px; color: var(--text-2); }
+.foot img { height: 22px; width: auto; }
+.foot b { font-weight: 600; color: var(--text-2); }
+
+.card { background: var(--surface); border: 1px solid var(--line-2); border-radius: 16px; padding: 20px 22px; }
+.tag { display: inline-block; white-space: nowrap; font: 600 12px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase; padding: 6px 9px; border-radius: 999px; border: 1px solid; }
+.tag.live { color: var(--ok); border-color: rgba(82,197,140,.4); background: rgba(82,197,140,.12); }
+.tag.test { color: var(--accent-text); border-color: rgba(170,180,255,.38); background: rgba(132,122,240,.15); }
+.tag.none { color: var(--warn); border-color: rgba(223,179,91,.4); background: rgba(223,179,91,.12); }
+.mono { font-family: var(--mono); }
+.small { font-size: 15.5px; color: var(--text-2); line-height: 1.45; }
+
+/* 1 — cover */
+.cover { padding: 0; background:
+  radial-gradient(520px 520px at 27% 50%, rgba(132,122,240,.38), transparent 68%),
+  radial-gradient(900px 600px at 100% 100%, rgba(84,104,228,.18), transparent 60%), var(--bg); }
+.cover .logo { position: absolute; left: 92px; top: 118px; width: 400px; filter: drop-shadow(0 0 40px rgba(132,122,240,.55)); }
+.cover .copy { position: absolute; left: 600px; top: 96px; width: 620px; }
+.cover .kicker { margin-bottom: 18px; }
+.cover h1 { font-size: 66px; white-space: nowrap; letter-spacing: -.035em; margin: 0; line-height: 1; }
+.cover .tagline { font-size: 24px; line-height: 1.36; color: var(--text); margin-top: 18px; font-weight: 500; }
+.cover .summary { font-size: 18px; line-height: 1.45; color: var(--text-2); margin-top: 14px; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 20px; }
+.chip { font: 600 12.5px/1 var(--mono); padding: 8px 11px; border-radius: 999px; background: var(--surface-2); border: 1px solid var(--line-2); color: var(--text-2); }
+.cover .facts { position: absolute; left: 64px; right: 64px; bottom: 70px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+.fact { background: rgba(18,18,24,.85); border: 1px solid var(--line-2); border-radius: 14px; padding: 12px 18px 13px; }
+.fact b { display: block; font-size: 28px; letter-spacing: -.02em; background: var(--grad); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.fact span { font-size: 14px; color: var(--text-2); line-height: 1.35; display: block; margin-top: 4px; }
+.cover .foot { bottom: 0; }
+.star { position: absolute; width: 22px; height: 22px; opacity: .85; }
+
+/* 2 — problem */
+.cols2 { display: grid; grid-template-columns: 1.02fr 1fr; gap: 34px; margin-top: 26px; }
+.problem p { font-size: 20px; color: var(--text-2); margin-bottom: 14px; }
+.problem p strong { color: var(--text); font-weight: 600; }
+.pull { margin-top: 22px; padding: 20px 24px; border-left: 3px solid var(--b); background: linear-gradient(90deg, rgba(132,122,240,.14), transparent); border-radius: 0 14px 14px 0; font-size: 23px; line-height: 1.35; font-weight: 600; letter-spacing: -.01em; }
+.objectives { display: grid; gap: 10px; }
+.obj { display: grid; grid-template-columns: 40px 1fr; gap: 16px; align-items: center; padding: 11px 20px; }
+.obj .n { width: 40px; height: 40px; border-radius: 12px; background: var(--grad); display: grid; place-items: center; font: 600 17px/1 var(--mono); color: #fff; }
+.obj b { font-size: 18.5px; display: block; margin-bottom: 2px; }
+.scope { position: absolute; left: 64px; right: 64px; bottom: 74px; display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+.scope .card { padding: 16px 22px; }
+.scope h3 { font: 600 13px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase; margin-bottom: 8px; }
+.scope .in h3 { color: var(--ok); } .scope .out h3 { color: var(--warn); }
+
+/* 3 — solution */
+.grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 26px; }
+.feat { padding: 18px 20px 18px; min-height: 168px; }
+.feat h3 { font-size: 21px; margin: 12px 0 6px; letter-spacing: -.01em; }
+.legend { position: absolute; left: 64px; right: 64px; bottom: 74px; display: flex; align-items: center; gap: 22px; padding: 14px 22px; }
+.legend .item { display: flex; align-items: center; gap: 10px; font-size: 15px; color: var(--text-2); }
+.legend .sep { display: none; } .legend { justify-content: space-between; }
+
+/* 4 — architecture */
+.diagram { margin-top: 20px; margin-left: -6px; }
+.diagram svg { width: 1150px; height: auto; display: block; }
+.caps { position: absolute; left: 64px; right: 64px; bottom: 70px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+.caps div { font-size: 15.5px; color: var(--text-2); line-height: 1.42; padding-left: 14px; border-left: 2px solid var(--line-2); }
+.caps b { display: block; color: var(--text); font-size: 16px; margin-bottom: 2px; }
+
+/* 5 — how it works */
+.steps { display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px; margin-top: 24px; position: relative; }
+.step { padding: 14px 15px; height: 286px; position: relative; overflow: hidden; }
+.step .num { font: 600 13px/1 var(--mono); color: var(--accent-text); letter-spacing: .1em; }
+.step h3 { font-size: 17.5px; line-height: 1.22; margin: 10px 0 8px; letter-spacing: -.01em; }
+.step p { font-size: 14.5px; line-height: 1.42; color: var(--text-2); }
+.step.hi { border-color: rgba(148,121,234,.6); background: linear-gradient(180deg, rgba(132,122,240,.16), var(--surface) 70%); }
+.step code, .quote { font: 400 13.5px/1.4 var(--mono); color: var(--accent-text); }
+.turn { display: inline-block; font: 600 11.5px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase; padding: 4px 7px; border-radius: 6px; margin-bottom: 4px; }
+.turn.n1 { background: rgba(84,104,228,.25); color: var(--accent-text); } .turn.n2 { background: rgba(148,121,234,.28); color: #d6c8ff; }
+.obs { position: absolute; left: 64px; right: 64px; bottom: 74px; display: grid; grid-template-columns: 1.55fr 1fr; gap: 16px; }
+.obs .card { padding: 16px 22px; }
+.obs h3 { font: 600 13px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--ok); margin-bottom: 10px; }
+.obs ul { list-style: none; display: grid; grid-template-columns: 1fr 1fr; gap: 6px 22px; }
+.obs li { font-size: 14.5px; color: var(--text-2); line-height: 1.38; padding-left: 16px; position: relative; }
+.obs li::before { content: ""; position: absolute; left: 0; top: 7px; width: 7px; height: 7px; border-radius: 2px; background: var(--ok); }
+.obs .shell h3 { color: var(--accent-text); }
+.obs .shell p { font-size: 14.5px; color: var(--text-2); line-height: 1.42; }
+.obs .shell b { color: var(--text); font-weight: 600; }
+
+/* 6 — decisions */
+table.dec { width: 100%; border-collapse: separate; border-spacing: 0 6px; margin-top: 10px; }
+.dec th { text-align: left; font: 600 12.5px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--text-3); padding: 0 16px 4px; }
+.dec td { background: var(--surface); padding: 9px 16px; font-size: 15px; line-height: 1.38; color: var(--text-2); vertical-align: top; border-top: 1px solid var(--line-2); border-bottom: 1px solid var(--line-2); }
+.dec td:first-child { border-left: 1px solid var(--line-2); border-radius: 14px 0 0 14px; width: 27%; }
+.dec td:last-child { border-right: 1px solid var(--line-2); border-radius: 0 14px 14px 0; width: 31%; }
+.dec td:first-child b { display: block; color: var(--text); font-size: 16.5px; letter-spacing: -.01em; }
+.dec td:first-child span { font: 400 12.5px/1.4 var(--mono); color: var(--accent-text); }
+.dec td em { font-style: normal; color: var(--text); }
+
+/* 7 — proof */
+.proof { display: grid; grid-template-columns: 470px 1fr; gap: 30px; margin-top: 24px; }
+.shots { position: relative; }
+.shot { border-radius: 14px; border: 1px solid var(--line-2); overflow: hidden; background: #000; box-shadow: 0 24px 60px rgba(0,0,0,.6); }
+.shot img { display: block; width: 100%; }
+.shots .cap { font-size: 13.5px; color: var(--text-3); margin-top: 12px; line-height: 1.4; padding-right: 130px; }
+.shots .phone { position: absolute; right: -10px; top: 205px; width: 124px; border-radius: 14px; border: 1px solid var(--line-2); overflow: hidden; box-shadow: 0 18px 44px rgba(0,0,0,.7); background: #fff; }
+.shots .phone img { display: block; width: 100%; }
+table.ev { width: 100%; border-collapse: collapse; }
+.ev td { padding: 10px 10px; border-bottom: 1px solid var(--line); font-size: 15px; line-height: 1.38; color: var(--text-2); vertical-align: top; }
+.ev tr:first-child td { border-top: 1px solid var(--line); }
+.ev td:first-child { color: var(--text); font-weight: 600; width: 30%; padding-left: 0; }
+.ev td:last-child { width: 108px; font: 400 12.5px/1.4 var(--mono); color: var(--text-3); text-align: right; padding-right: 0; }
+.ev b { color: var(--ok); font-weight: 600; }
+
+/* 8 — limits */
+.cols8 { display: grid; grid-template-columns: 1.15fr 1fr; gap: 30px; margin-top: 24px; }
+.limits { display: grid; gap: 9px; }
+.lim { display: grid; grid-template-columns: 14px 1fr; gap: 12px; padding: 12px 16px; align-items: start; }
+.lim i { width: 10px; height: 10px; border-radius: 3px; background: var(--warn); margin-top: 8px; }
+.lim p { font-size: 15.5px; line-height: 1.38; color: var(--text-2); }
+.lim b { color: var(--text); font-weight: 600; }
+.res { display: grid; gap: 10px; align-content: start; }
+.res a { display: block; padding: 13px 18px; }
+.res a b { display: block; color: var(--text); font-size: 17px; }
+.res a span { font: 400 13px/1.3 var(--mono); color: var(--accent-text); word-break: break-all; }
+.res .main { background: linear-gradient(135deg, rgba(84,104,228,.28), rgba(148,121,234,.22)); border-color: rgba(148,121,234,.6); }
+.res .main span { font-size: 15px; }
+.by { margin-top: 6px; font-size: 14.5px; color: var(--text-3); }
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="spark" viewBox="0 0 24 24"><path d="M12 0c.7 6.6 4.8 10.7 12 12-7.2 1.3-11.3 5.4-12 12-.7-6.6-4.8-10.7-12-12C7.2 10.7 11.3 6.6 12 0z" fill="#aab4ff"/></symbol>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#6c80f2"/><stop offset="1" stop-color="#9479ea"/></linearGradient>
+    <marker id="arr" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#aab4ff"/></marker>
+    <marker id="arr2" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#7f7f90"/></marker>
+  </defs>
+</svg>
+
+<!-- 1 · Cover -->
+<section class="page cover">
+  <svg class="star" style="left:520px;top:92px;width:26px;height:26px"><use href="#spark"/></svg>
+  <svg class="star" style="left:1198px;top:60px;width:18px;height:18px;opacity:.5"><use href="#spark"/></svg>
+    <img class="logo" src="../assets/SavantA2_IconLogo.png" alt="Logo Savant Azurian">
+  <div class="copy">
+    <div class="kicker">Prototype personnel · 2026</div>
+    <h1>Savant Azurian</h1>
+    <p class="tagline">Un agent IA personnel pensé pour la voix, sur Microsoft Azure, construit avec LangGraph et Microsoft Foundry.</p>
+    <p class="summary">Un seul propriétaire, de vrais outils : un espace Notion, une VM Linux en SSH, des documents de projet et le web. Tout ce qui modifie quelque chose passe par des contrôles indépendants avant de s'exécuter.</p>
+    <div class="chips"><span class="chip">Python 3.13</span><span class="chip">LangGraph</span><span class="chip">Microsoft Foundry</span><span class="chip">FastAPI</span><span class="chip">React · Vite</span><span class="chip">Bicep · azd</span></div>
+  </div>
+  <div class="facts">
+    <div class="fact"><b>940</b><span>tests automatisés : 686 Python, 254 client web</span></div>
+    <div class="fact"><b>23</b><span>décisions d'architecture documentées, 5 documents de conception, 2 spécifications</span></div>
+    <div class="fact"><b>44/44 · 36/36</b><span>cas des juges de consentement et de commandes réussis en pass^5</span></div>
+    <div class="fact"><b>Aucune clé d'API</b><span>Entra ID et identités managées ; trois secrets, tous dans Key Vault</span></div>
+  </div>
+  <div class="foot"><span class="brand"><img src="../assets/SavantA2_IconLogo.png" alt=""><b>Savant Azurian</b></span><span><a href="https://github.com/boussecsou/savant-azurian">github.com/boussecsou/savant-azurian</a></span><span>01 / 08</span></div>
+</section>
+
+<!-- 2 · Problem & objectives -->
+<section class="page">
+  <div class="kicker">02 — Problème &amp; objectifs</div>
+  <h1>Un agent qui agit exige <em>plus qu'un bon prompt</em></h1>
+  <div class="cols2">
+    <div class="problem">
+      <p>Un assistant qui ne fait que parler est limité. Celui qui peut <strong>écrire dans un espace de travail</strong> ou <strong>lancer des commandes shell</strong> est utile, et dangereux : une seule erreur a des conséquences réelles.</p>
+      <p>Le risque est maximal quand le modèle vient de lire un <strong>contenu non fiable</strong>, comme une page web ou une page Notion, puis passe à l'action.</p>
+      <div class="pull">Autoriser un accès, ce n'est pas autoriser une action. Savant sépare les deux.</div>
+    </div>
+    <div class="objectives">
+      <div class="card obj"><div class="n">1</div><div><b>Un propriétaire, voix ou texte</b><span class="small">On lui parle ou on écrit ; la réponse peut être parlée.</span></div></div>
+      <div class="card obj"><div class="n">2</div><div><b>De vrais outils, pas des démos</b><span class="small">Notion, VM Linux en SSH, documents de projet, web.</span></div></div>
+      <div class="card obj"><div class="n">3</div><div><b>Aucune modification sans accord précis et actuel</b><span class="small">Un doute, une identité manquante : rien n'est écrit.</span></div></div>
+      <div class="card obj"><div class="n">4</div><div><b>Azure, sans clé stockée</b><span class="small">Identités managées et Key Vault ; pour apprendre Azure.</span></div></div>
+    </div>
+  </div>
+  <div class="scope">
+    <div class="card in"><h3>Dans le périmètre</h3><span class="small">Un seul propriétaire · chat et voix · Notion · SSH vers une VM · documents par projet · recherche web et code via la Toolbox Foundry</span></div>
+    <div class="card out"><h3>Hors périmètre ou non construit</h3><span class="small">Plusieurs utilisateurs · Gmail · recherche dans les sessions passées · hébergement du client web dans Azure (il tourne en local, par choix)</span></div>
+  </div>
+  <div class="foot"><span class="brand"><img src="../assets/SavantA2_IconLogo.png" alt=""><b>Savant Azurian</b></span><span>Sources : SDD-001, SPEC-001, ADR-0017</span><span>02 / 08</span></div>
+</section>
+
+<!-- 3 · Solution & features -->
+<section class="page">
+  <div class="kicker">03 — Solution &amp; fonctionnalités</div>
+  <h1>Ce qui existe, et <em>jusqu'où chaque partie est prouvée</em></h1>
+  <div class="grid3">
+    <div class="card feat"><span class="tag live">Validé en réel</span><h3>Voix et texte</h3><p class="small">Reconnaissance vocale en direct, réponse parlée avec une voix neuronale. La chaîne a tourné de bout en bout ; le micro du navigateur n'est pas encore vérifié.</p></div>
+    <div class="card feat"><span class="tag live">Validé en réel</span><h3>Notion</h3><p class="small">Recherche et lecture de pages. Écriture seulement après l'accord du propriétaire sur cette opération précise, puis vérifiée par une relecture indépendante.</p></div>
+    <div class="card feat"><span class="tag live">Validé en réel</span><h3>VM Linux en SSH</h3><p class="small">Les commandes s'exécutent sur une VM dédiée. Un second appel au modèle juge chacune : exécuter, confirmer ou refuser.</p></div>
+    <div class="card feat"><span class="tag test">Testé avec des doubles</span><h3>Documents de projet</h3><p class="small">On envoie des fichiers dans un projet puis on les interroge. Azure AI Search, avec le filtre de projet imposé par le serveur, jamais par le modèle.</p></div>
+    <div class="card feat"><span class="tag test">Testé avec des doubles</span><h3>Recherche web et code</h3><p class="small">Via la Toolbox Foundry. Chaque appel est jugé selon l'outil ; tout outil inconnu demande l'accord du propriétaire.</p></div>
+    <div class="card feat"><span class="tag test">Testé avec des doubles</span><h3>Projets et sessions</h3><p class="small">Stockés dans Cosmos DB : le texte du propriétaire seulement, jamais les arguments ni les résultats d'outils. Le client web tourne aussi hors ligne sur un backend simulé.</p></div>
+  </div>
+  <div class="card legend">
+    <span class="item"><span class="tag live">Validé en réel</span> vrais services, rapports datés</span>
+    <span class="item"><span class="tag test">Testé avec des doubles</span> tests seulement</span>
+    <span class="sep"></span>
+    <span class="item"><span class="tag none">Non construit</span> Gmail · mémoire des sessions</span>
+  </div>
+  <div class="foot"><span class="brand"><img src="../assets/SavantA2_IconLogo.png" alt=""><b>Savant Azurian</b></span><span>Source : docs/status.md</span><span>03 / 08</span></div>
+</section>
+
+<!-- 4 · Architecture -->
+<section class="page">
+  <div class="kicker">04 — Architecture du système</div>
+  <h1>Trois briques, <em>un seul chemin</em> vers les outils</h1>
+  <div class="diagram">
+  <svg viewBox="0 0 1160 420" xmlns="http://www.w3.org/2000/svg" font-family="Inter, sans-serif">
+    <g transform="translate(0,30)">
+      <!-- zones -->
+      <text x="0" y="292" font-size="12" fill="#7f7f90" font-family="JetBrains Mono, monospace" letter-spacing="1.4">ORDINATEUR DU PROPRIÉTAIRE</text>
+      <rect x="215" y="0" width="745" height="375" rx="22" fill="#0e0e14" stroke="rgba(255,255,255,.16)" stroke-dasharray="3 5"/>
+      <text x="236" y="26" font-size="12" fill="#7f7f90" font-family="JetBrains Mono, monospace" letter-spacing="1.4">MICROSOFT AZURE</text>
+      <rect x="456" y="40" width="250" height="322" rx="18" fill="rgba(108,128,242,.07)" stroke="rgba(148,121,234,.45)"/>
+      <text x="474" y="62" font-size="12" fill="#aab4ff" font-family="JetBrains Mono, monospace" letter-spacing="1.4">PROJET FOUNDRY</text>
+
+      <!-- web client -->
+      <rect x="10" y="130" width="170" height="130" rx="14" fill="#121218" stroke="rgba(255,255,255,.18)"/>
+      <text x="95" y="172" text-anchor="middle" font-size="17" font-weight="600" fill="#f3f3f6">Client web</text>
+      <text x="95" y="196" text-anchor="middle" font-size="13.5" fill="#a8a8b8">React · Vite</text>
+      <text x="95" y="216" text-anchor="middle" font-size="13.5" fill="#a8a8b8">chat + orbe vocal</text>
+      <text x="95" y="236" text-anchor="middle" font-size="13.5" fill="#a8a8b8">tourne en local</text>
+
+      <!-- BFF -->
+      <rect x="240" y="130" width="190" height="130" rx="14" fill="#121218" stroke="rgba(255,255,255,.18)"/>
+      <text x="335" y="165" text-anchor="middle" font-size="17" font-weight="600" fill="#f3f3f6">Backend (BFF)</text>
+      <text x="335" y="189" text-anchor="middle" font-size="13.5" fill="#a8a8b8">FastAPI · Container Apps</text>
+      <text x="335" y="209" text-anchor="middle" font-size="13.5" fill="#a8a8b8">Entra Easy Auth,</text>
+      <text x="335" y="228" text-anchor="middle" font-size="13.5" fill="#a8a8b8">propriétaire seul</text>
+
+      <!-- Toolbox -->
+      <rect x="476" y="76" width="210" height="58" rx="12" fill="#121218" stroke="rgba(255,255,255,.18)"/>
+      <text x="581" y="101" text-anchor="middle" font-size="16" font-weight="600" fill="#f3f3f6">Toolbox</text>
+      <text x="581" y="121" text-anchor="middle" font-size="13.5" fill="#a8a8b8">recherche web · code</text>
+      <!-- Agent -->
+      <rect x="476" y="150" width="210" height="150" rx="14" fill="#171726" stroke="url(#g)" stroke-width="2"/>
+      <text x="581" y="186" text-anchor="middle" font-size="17" font-weight="700" fill="#f3f3f6">Agent hébergé</text>
+      <text x="581" y="210" text-anchor="middle" font-size="13.5" fill="#a8a8b8">graphe LangGraph</text>
+      <text x="581" y="236" text-anchor="middle" font-size="13.5" fill="#aab4ff">juge de consentement</text>
+      <text x="581" y="256" text-anchor="middle" font-size="13.5" fill="#aab4ff">juge de commandes</text>
+      <text x="581" y="276" text-anchor="middle" font-size="13.5" fill="#aab4ff">appels d'outils bornés</text>
+      <!-- Model -->
+      <rect x="476" y="312" width="210" height="40" rx="12" fill="#121218" stroke="rgba(255,255,255,.18)"/>
+      <text x="581" y="338" text-anchor="middle" font-size="15" font-weight="600" fill="#f3f3f6">Modèle (Azure OpenAI)</text>
+
+      <!-- services column -->
+      <rect x="738" y="44" width="212" height="60" rx="12" fill="#121218" stroke="rgba(255,255,255,.18)"/>
+      <text x="844" y="70" text-anchor="middle" font-size="16" font-weight="600" fill="#f3f3f6">Azure Speech</text>
+      <text x="844" y="90" text-anchor="middle" font-size="13.5" fill="#a8a8b8">reconnaissance · voix</text>
+      <rect x="738" y="182" width="212" height="52" rx="12" fill="#121218" stroke="rgba(255,255,255,.18)"/>
+      <text x="844" y="205" text-anchor="middle" font-size="16" font-weight="600" fill="#f3f3f6">Données</text>
+      <text x="844" y="224" text-anchor="middle" font-size="13.5" fill="#a8a8b8">Cosmos · Blob · Search</text>
+      <rect x="738" y="268" width="212" height="52" rx="12" fill="#121218" stroke="rgba(255,255,255,.18)"/>
+      <text x="844" y="291" text-anchor="middle" font-size="16" font-weight="600" fill="#f3f3f6">Key Vault</text>
+      <text x="844" y="310" text-anchor="middle" font-size="13.5" fill="#a8a8b8">clé SSH · 3 secrets</text>
+
+      <!-- external -->
+      <text x="1000" y="100" font-size="12" fill="#7f7f90" font-family="JetBrains Mono, monospace" letter-spacing="1.4">HORS D'AZURE</text>
+      <rect x="1000" y="125" width="160" height="70" rx="12" fill="#121218" stroke="rgba(255,255,255,.18)"/>
+      <text x="1080" y="155" text-anchor="middle" font-size="16" font-weight="600" fill="#f3f3f6">Notion</text>
+      <text x="1080" y="176" text-anchor="middle" font-size="13.5" fill="#a8a8b8">serveur MCP</text>
+      <rect x="1000" y="215" width="160" height="70" rx="12" fill="#121218" stroke="rgba(255,255,255,.18)"/>
+      <text x="1080" y="245" text-anchor="middle" font-size="16" font-weight="600" fill="#f3f3f6">VM Linux</text>
+      <text x="1080" y="266" text-anchor="middle" font-size="13.5" fill="#a8a8b8">en SSH</text>
+
+      <!-- arrows -->
+      <path d="M180 195 H238" stroke="#aab4ff" stroke-width="2" fill="none" marker-end="url(#arr)"/>
+      <path d="M430 195 H474" stroke="#aab4ff" stroke-width="2" fill="none" marker-end="url(#arr)"/>
+      <path d="M581 150 V136" stroke="#aab4ff" stroke-width="2" fill="none" marker-end="url(#arr)"/>
+      <path d="M581 300 V310" stroke="#aab4ff" stroke-width="2" fill="none" marker-end="url(#arr)"/>
+      <path d="M686 208 H736" stroke="#aab4ff" stroke-width="2" fill="none" marker-end="url(#arr)"/>
+      <path d="M686 294 H736" stroke="#aab4ff" stroke-width="2" fill="none" marker-end="url(#arr)"/>
+      <path d="M686 165 H998" stroke="#aab4ff" stroke-width="2" fill="none" marker-end="url(#arr)"/>
+      <path d="M686 250 H998" stroke="#aab4ff" stroke-width="2" fill="none" marker-end="url(#arr)"/>
+      <text x="844" y="157" text-anchor="middle" font-size="12.5" fill="#a8a8b8" font-family="JetBrains Mono, monospace">OAuth + écritures approuvées</text>
+      <text x="844" y="245" text-anchor="middle" font-size="12.5" fill="#a8a8b8" font-family="JetBrains Mono, monospace">commandes jugées</text>
+    </g>
+    <!-- dashed audio route -->
+    <path d="M95 160 V16 H845 V72" fill="none" stroke="#7f7f90" stroke-width="1.6" stroke-dasharray="6 5" marker-end="url(#arr2)"/>
+    <text x="330" y="9" font-size="13" fill="#a8a8b8">l'audio va directement à Azure Speech ; le backend ne fournit qu'un jeton de 10 minutes</text>
+  </svg>
+  </div>
+  <div class="caps">
+    <div><b>Client web</b>Tourne sur l'ordinateur du propriétaire. L'hébergement Azure a été écarté (ADR-0010).</div>
+    <div><b>Backend (BFF)</b>Porte réservée au propriétaire, callback OAuth Notion, projets et sessions dans Cosmos DB, envois de fichiers. Il fixe le projet ; le modèle ne le choisit jamais.</div>
+    <div><b>Agent hébergé</b>Le graphe LangGraph servi sur le protocole Responses de Foundry. Il atteint Notion, la VM et les documents ; Cosmos DB ne concerne que le backend.</div>
+  </div>
+  <div class="foot"><span class="brand"><img src="../assets/SavantA2_IconLogo.png" alt=""><b>Savant Azurian</b></span><span>Source : SDD-002, README</span><span>04 / 08</span></div>
+</section>
+
+<!-- 5 · How it works -->
+<section class="page">
+  <div class="kicker">05 — Fonctionnement</div>
+  <h1>Une écriture Notion, <em>de la demande au résultat</em></h1>
+  <div class="steps">
+    <div class="card step"><span class="turn n1">Tour 1</span><div class="num">01</div><h3>Le propriétaire demande</h3><p>« Ajoute cette ligne à ma page Sandbox. »</p></div>
+    <div class="card step"><span class="turn n1">Tour 1</span><div class="num">02</div><h3>La politique classe l'outil</h3><p>Seul un outil en lecture seule s'exécute librement. Celui-ci ne l'est pas : il est retenu. Rien ne part vers Notion.</p></div>
+    <div class="card step"><span class="turn n1">Tour 1</span><div class="num">03</div><h3>Le serveur demande</h3><p>Le serveur écrit la question, pas le modèle. Une entrée chiffrée à usage unique lie opération, propriétaire, conversation et expiration.</p></div>
+    <div class="card step"><span class="turn n2">Tour 2</span><div class="num">04</div><h3>Le propriétaire répond</h3><p><code>« ui, lance »</code><br>L'accord ne peut venir que d'un tour ultérieur.</p></div>
+    <div class="card step hi"><span class="turn n2">Tour 2</span><div class="num">05</div><h3>Un second modèle juge</h3><p>Un appel isolé ne voit que le message du propriétaire et la proposition : approuver, rejeter ou demander. Sortie invalide : rien n'est écrit.</p></div>
+    <div class="card step"><span class="turn n2">Tour 2</span><div class="num">06</div><h3>Réclamer, puis écrire une fois</h3><p>L'entrée est réclamée avant tout appel réseau et jamais récupérée. Une seule écriture, puis le résultat.</p></div>
+  </div>
+  <div class="obs">
+    <div class="card"><h3>Constaté lors de la validation réelle · 25 oct. 2026</h3>
+      <ul>
+        <li>Écriture approuvée : un seul marqueur, vu par une lecture indépendante</li>
+        <li>Écriture refusée : page identique à l'originale</li>
+        <li>Accord rejoué : <span class="mono">no_pending_approval</span></li>
+        <li>Autre conversation : l'opération en attente reste inutilisable</li>
+        <li>En-tête de propriétaire falsifié : sans effet</li>
+        <li>Après redémarrage : opération restaurée, écrite une fois</li>
+      </ul>
+    </div>
+    <div class="card shell"><h3>Même principe pour le shell</h3><p>Le juge de commandes répond <b>RUN</b>, <b>CONFIRM</b> ou <b>REFUSE</b>. Une commande confirmée ne s'exécute qu'à un tour ultérieur, avec la même empreinte, une seule fois. Un échec du juge vaut CONFIRM.</p></div>
+  </div>
+  <div class="foot"><span class="brand"><img src="../assets/SavantA2_IconLogo.png" alt=""><b>Savant Azurian</b></span><span>Sources : ADR-0017, ADR-0018, validation Notion</span><span>05 / 08</span></div>
+</section>
+
+<!-- 6 · Technical decisions -->
+<section class="page">
+  <div class="kicker">06 — Décisions techniques</div>
+  <h1>Chaque décision a <em>une raison et un coût</em></h1>
+  <table class="dec">
+    <tr><th>Décision</th><th>Pourquoi</th><th>Ce que ça coûte</th></tr>
+    <tr><td><b>Deux couches d'autorisation</b><span>ADR-0017</span></td><td>OAuth ouvre un espace de travail ; un juge distinct autorise <em>une opération</em>. Les interruptions LangGraph ne savaient pas reprendre sur un simple « oui », et le modèle principal est le composant attaqué.</td><td>Un appel de modèle de plus par accord.</td></tr>
+    <tr><td><b>Un juge pour chaque commande</b><span>ADR-0018</span></td><td>Le shell est trop ouvert pour une liste fixe. Un second appel lit chaque commande ; un plancher codé ne fait que le doubler.</td><td>Environ 1 à 1,5 s par commande ; un modèle n'est pas une frontière de sécurité.</td></tr>
+    <tr><td><b>Contenu extérieur = donnée</b><span>ADR-0019</span></td><td>Le web, Notion et les résultats d'outils sont enveloppés comme non fiables, et le prompt dit qu'ils ne sont jamais des ordres.</td><td>Cela relève la barre sans suffire : les juges restent les vrais verrous.</td></tr>
+    <tr><td><b>Accès sans clé</b><span>ADR-0020</span></td><td>Entra ID et identités managées partout. Seulement trois secrets, dans Key Vault.</td><td>Le secret client d'Easy Auth expire après 365 jours et doit être renouvelé.</td></tr>
+    <tr><td><b>Filtre de projet côté serveur</b><span>ADR-0021</span></td><td>Le serveur impose le filtre de projet à chaque recherche : le modèle ne peut pas lire un autre projet.</td><td>Le modèle ne peut pas chercher à travers plusieurs projets.</td></tr>
+    <tr><td><b>Exécution d'outils bornée</b><span>ADR-0022</span></td><td>Délais maximaux, relance pour les lectures seulement, arrêt après 8 étapes, résultats limités à 20 000 caractères.</td><td>Les tâches longues peuvent s'arrêter tôt.</td></tr>
+  </table>
+  <div class="foot"><span class="brand"><img src="../assets/SavantA2_IconLogo.png" alt=""><b>Savant Azurian</b></span><span>Décisions complètes : docs/adr/</span><span>06 / 08</span></div>
+</section>
+
+<!-- 7 · Demonstration & proof -->
+<section class="page">
+  <div class="kicker">07 — Démonstration &amp; preuves</div>
+  <h1>Ce qui peut être <em>vérifié, pas seulement affirmé</em></h1>
+  <div class="proof">
+    <div class="shots">
+      <div class="shot"><img src="../assets/user-guide/08-dark-theme.png" alt="Le client web, thème sombre"></div>
+      <div class="phone"><img src="../assets/user-guide/09-mobile.png" alt="Le client web sur téléphone"></div>
+      <p class="cap">Le client web, en local sur son <b>backend simulé</b> : la réponse affichée est un texte préenregistré, pas le vrai agent.</p>
+    </div>
+    <table class="ev">
+      <tr><td>Tests automatisés</td><td><b>686</b> tests Python et <b>254</b> tests web passent. Aucun ne touche Azure. Ruff et le contrôle des docs sont propres.</td><td>16 nov. 2026</td></tr>
+      <tr><td>Juge de consentement</td><td><b>44 sur 44</b> cas en pass^5 sur le modèle de production. L'ancien prompt échouait sur 13 à 15 des 32 cas en pass^4.</td><td>7 nov. 2026</td></tr>
+      <tr><td>Juge de commandes</td><td><b>36 sur 36</b> cas en pass^5, aucun échec du juge.</td><td>7 nov. 2026</td></tr>
+      <tr><td>Notion, en réel</td><td>Lecture, écriture approuvée avec relecture indépendante, écriture refusée sans effet, rejeu bloqué.</td><td>25 oct. 2026</td></tr>
+      <tr><td>SSH, en réel</td><td>Lecture exécutée, suppression refusée, suppression approuvée lancée au tour suivant et échouée sur une vraie permission, signalée.</td><td>2 nov. 2026</td></tr>
+      <tr><td>Voix, en réel</td><td>Question parlée, reconnaissance (1,1 s), agent, synthèse (1,2 s). Étape agent : 28 s, et 72 s avec Notion.</td><td>3 nov. 2026</td></tr>
+    </table>
+  </div>
+  <div class="foot"><span class="brand"><img src="../assets/SavantA2_IconLogo.png" alt=""><b>Savant Azurian</b></span><span>Rapports : docs/*-live-validation-*.md</span><span>07 / 08</span></div>
+</section>
+
+<!-- 8 · Limits & resources -->
+<section class="page">
+  <div class="kicker">08 — Limites &amp; ressources</div>
+  <h1>Ce qui n'est pas fait, et <em>où regarder</em></h1>
+  <div class="cols8">
+    <div class="limits">
+      <div class="card lim"><i></i><p><b>Un prototype, pas un produit.</b> Construit autour de l'abonnement Azure d'un seul propriétaire, pour apprendre et explorer un usage sûr des outils. Le faire tourner demande vos propres ressources Azure.</p></div>
+      <div class="card lim"><i></i><p><b>Le gabarit d'infrastructure n'a jamais été déployé.</b> Il compile et passe le lint en CI ; l'agent lui-même a tourné en réel depuis l'installation d'origine.</p></div>
+      <div class="card lim"><i></i><p><b>Pas encore vérifié :</b> la révocation OAuth Notion, le micro du navigateur, les écrans d'envoi de documents, Safari, Firefox et les téléphones. <b>Non construit :</b> Gmail et la mémoire des sessions passées.</p></div>
+      <div class="card lim"><i></i><p><b>Réponses lentes :</b> 28 s à 72 s pour l'étape agent dans le test vocal, une longue attente dans un échange parlé.</p></div>
+      <div class="card lim"><i></i><p><b>Port SSH ouvert sur Internet</b> dans l'installation de référence, protégé par la clé, une clé d'hôte épinglée et un compte dédié.</p></div>
+    </div>
+    <div class="res">
+      <a class="card main" href="https://github.com/boussecsou/savant-azurian"><b>Dépôt</b><span>github.com/boussecsou/savant-azurian</span></a>
+      <a class="card" href="https://github.com/boussecsou/savant-azurian/blob/main/docs/status.md"><b>État du projet</b><span>docs/status.md · livré, validé, non fait</span></a>
+      <a class="card" href="https://github.com/boussecsou/savant-azurian/blob/main/docs/adr/README.md"><b>23 décisions documentées</b><span>docs/adr/README.md</span></a>
+      <a class="card" href="https://github.com/boussecsou/savant-azurian/blob/main/docs/deployment.md"><b>Guides de déploiement et d'utilisation</b><span>docs/deployment.md · docs/user-guide.md</span></a>
+      <p class="by">Ali Boussecsou · licence MIT · à essayer hors ligne avec <span class="mono">just check</span></p>
+    </div>
+  </div>
+  <div class="foot"><span class="brand"><img src="../assets/SavantA2_IconLogo.png" alt=""><b>Savant Azurian</b></span><span>Faits vérifiés le 16 nov. 2026</span><span>08 / 08</span></div>
+</section>
+
+</body>
+</html>
