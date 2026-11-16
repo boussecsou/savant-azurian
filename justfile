@@ -4,6 +4,10 @@ set shell := ["bash", "-euo", "pipefail", "-c"]
 default:
     @just --list
 
+# Check that the tools this repository needs are installed (read-only).
+doctor:
+    python3 -m scripts.doctor
+
 # Install the Python and Node dependencies exactly as CI does.
 setup:
     uv sync --locked --group dev
@@ -29,6 +33,12 @@ docs-check:
 
 # Everything CI checks for the Python side, plus the web client.
 check: lint docs-check test pwa-check
+
+# Build and lint the Bicep template and its parameter file (needs the Azure CLI).
+infra-check:
+    az bicep build --file infra/main.bicep --stdout > /dev/null
+    for f in infra/main.bicep infra/modules/*.bicep; do az bicep lint --file "$f"; done
+    AZURE_ENV_NAME=savant-dev AZURE_LOCATION=italynorth az bicep build-params --file infra/main.bicepparam --stdout > /dev/null
 
 # Test and build the web client.
 pwa-check:
