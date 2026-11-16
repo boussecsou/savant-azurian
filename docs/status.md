@@ -2,7 +2,7 @@
 
 What is delivered, what was validated against real services, and what is not. It is a map, not a test report: the dated [live validation reports](README.md#live-validation-reports) hold the evidence, and a green CI proves neither OAuth nor tools under real conditions.
 
-Last reviewed: 2026-11-11.
+Last reviewed: 2026-11-16.
 
 ## Validated against live services
 
@@ -29,6 +29,7 @@ Last reviewed: 2026-11-11.
 | Infrastructure as code (`infra/`) | Written from the Azure and Foundry documentation. **It compiles and lints cleanly (checked by CI), and has never been deployed.** [ADR-0023](adr/0023-infrastructure-as-code-with-bicep-and-azd.md) stays *Proposed* until a clean deployment. See [what to verify first](deployment.md#what-to-verify-first) |
 | `scripts/setup/` | The dry-run paths were exercised against a fake `azd`. The `--apply` paths have never run |
 | Dev container | Not built in the environment where it was written |
+| `just doctor`, `scripts/setup/init-env.sh` | The checks and the dry-run output were exercised; `init-env.sh --apply` was not |
 | Mock backend (`npm run dev:mock`) | Tested (`pwa/dev/mock-bff.test.ts`) and run locally |
 | Release automation, secrets scan, Dependabot | Added with the first public push; their first runs are the validation |
 
