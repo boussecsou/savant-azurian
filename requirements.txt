@@ -309,7 +309,7 @@ multidict==6.9.1
     #   yarl
 numpy==2.5.5
     # via langchain-azure-ai
-oauthlib==3.3.1
+oauthlib==4.0.1
     # via requests-oauthlib
 openai==3.51.0
     # via
