@@ -8,7 +8,6 @@ Every setting of Savant Azurian, in one place. A test (`tests/test_config_docs.p
 | --- | --- | --- |
 | Local development values | `.env` (copied from `.env.example`) | Git ignores it. Never commit it. |
 | Deployment values (URLs, names, IDs) | the azd environment, `.azure/<env>/.env` | Bicep outputs fill it. `azure.yaml` reads it as `${NAME}`. Nothing personal is hard-coded in the repository. |
-| CI values | GitHub repository variables | Same names as the azd variables. Copied by `scripts/setup/github-variables.sh`. |
 | Secrets | Azure Key Vault | Never in Git, `.env`, the azd environment or GitHub. See [Secrets](#secrets). |
 
 The **Scope** column says who reads a variable: `agent` (the hosted agent, also local), `bff` (the web backend), `local` (local development only), `script` (a script in `scripts/`), `azd` (the Azure Developer CLI and the Bicep template), `ci` (GitHub Actions), `platform` (injected by Foundry), `sdk` (read by an Azure SDK, not by this code). The drift test requires the scopes `agent`, `bff`, `local` and `script` to match what the code really reads.
@@ -109,15 +108,10 @@ Never put these in `.env` or `azure.yaml`. They are listed so the drift test can
 | Variable | Scope | Secret | Default | Set in | Description |
 | --- | --- | --- | --- | --- | --- |
 | `FOUNDRY_HOSTING_ENVIRONMENT` | platform | no | set in the hosted container | Foundry | Tells the code it runs as a Hosted Agent: a loopback OAuth callback is refused and the Foundry call identity is required. |
-| `DEPLOYED_AGENT_VERSION` | ci | no |  | `cd.yml` | Agent version the smoke test must observe. |
-| `GITHUB_EVENT_NAME` | ci | no |  | GitHub Actions | Used by `scripts/release_plan.py`. |
+| `DEPLOYED_AGENT_VERSION` | ci | no |  | your shell | Agent version `scripts/smoke_test.py` must observe. |
 | `GITHUB_OUTPUT` | ci | no |  | GitHub Actions | Step outputs file. |
 | `GITHUB_REPOSITORY` | ci | no |  | GitHub Actions | `owner/name` of the repository. |
-| `GITHUB_RUN_ID` | ci | no |  | GitHub Actions | Current run, used to find the previous release checkpoint. |
 | `GITHUB_STEP_SUMMARY` | ci | no |  | GitHub Actions | Step summary file. |
-| `SOURCE_SHA` | ci | no |  | `publish-bff.yml` | Commit the BFF image is built from. |
-| `IMAGE_REPOSITORY` | ci | no | `sa2-bff` | `publish-bff.yml` | Repository name of the BFF image in the registry. |
-| `PUBLISH_V1` | ci | no | `false` | `publish-bff.yml` | Manual escape hatch for the first image publication. |
 
 ## azd environment: inputs
 
@@ -152,23 +146,20 @@ Written by `azd provision` from the outputs of `infra/main.bicep`. Read by `azur
 | `STORAGE_ACCOUNT_NAME` | azd | no |  | Bicep output | Storage account (Notion token store and documents). |
 | `SEARCH_SERVICE_NAME` | azd | no |  | Bicep output | Azure AI Search service name. |
 | `FOUNDRY_ACCOUNT_NAME` | azd | no |  | Bicep output | Foundry (AI Services) account name. |
-| `ACR_NAME` | azd | no |  | Bicep output | Container registry name. Also a GitHub variable for `publish-bff.yml`. |
+| `ACR_NAME` | azd | no |  | Bicep output | Container registry name. |
 | `ACR_LOGIN_SERVER` | azd | no |  | Bicep output | Registry login server. |
 | `BFF_APP_NAME` | azd | no |  | Bicep output | Container App name of the BFF. |
 | `BFF_URL` | azd | no |  | Bicep output | Public HTTPS URL of the BFF. |
 | `BFF_IDENTITY_PRINCIPAL_ID` | azd | no |  | Bicep output | Object ID of the BFF identity. |
-| `OIDC_CLIENT_ID` | azd | no |  | Bicep output | Client ID of the CI identity. It becomes the GitHub variable `AZURE_CLIENT_ID`. |
+| `OIDC_CLIENT_ID` | azd | no |  | Bicep output | Client ID of the optional CI identity (the federated credential). No workflow in this repository uses it. |
 
 ## GitHub repository variables
 
-Configuration only, never secrets: GitHub signs in to Azure with OpenID Connect. `scripts/setup/github-variables.sh` copies them from the azd environment. The deployment workflow passes the ones `azure.yaml` reads to `azd env set`; the other workflows read these directly.
+Configuration only, never secrets. No workflow in this repository signs in to Azure.
 
 | Variable | Scope | Secret | Default | Set in | Description |
 | --- | --- | --- | --- | --- | --- |
-| `AZURE_CLIENT_ID` | ci | no | (required) | GitHub variable | Client ID of the identity GitHub Actions signs in with (the azd value `OIDC_CLIENT_ID`). Not a secret: the sign-in uses OpenID Connect. |
-| `AZD_ENV_NAME` | ci | no | `savant-ci` | GitHub variable | Name of the azd environment the CD workflow creates on the runner. |
 | `RELEASE_PLEASE_ENABLED` | ci | no | unset | GitHub variable | `true` turns on the release workflow, which opens a release pull request from the Conventional Commits history. It also needs the setting "Allow GitHub Actions to create and approve pull requests". |
-| `BFF_AUTO_PUBLISH` | ci | no | unset | GitHub variable | `true` publishes the BFF image automatically after a green CI on `main`. |
 
 ## Secrets
 

@@ -139,7 +139,7 @@ Foundry hosted agent (LangGraph)  →  Notion MCP, SSH, retrieval, toolbox
 
 ## 10. Delivery
 
-Continuous integration and delivery are described in [SDD-004](sdd-004-continuous-integration-and-delivery.md). Two points matter for the architecture: the agent and the backend are **independent delivery components**, and publishing a backend image to the registry does not roll out the Container App.
+Continuous integration is described in [SDD-004](sdd-004-continuous-integration-and-delivery.md). Nothing deploys automatically. Two points matter for the architecture: the agent and the backend are **independent components**, and publishing a backend image to the registry does not roll out the Container App.
 
 ## Revision history
 
@@ -149,7 +149,7 @@ Continuous integration and delivery are described in [SDD-004](sdd-004-continuou
 | 2026-09-02 | Conversational runtime update: live recognition and model-driven routing ([SDD-003](sdd-003-conversational-voice-runtime.md)) |
 | 2026-09-03 | Alignment of the local implementation with the target architecture |
 | 2026-10-20 | Notion architecture revised: direct OAuth through the backend, tools in the hosted agent |
-| 2026-10-27 | Component-aware CI/CD proposed ([SDD-004](sdd-004-continuous-integration-and-delivery.md)) |
+| 2026-10-27 | Component-aware CI/CD proposed; the CD part was removed on 2026-11-16 ([SDD-004](sdd-004-continuous-integration-and-delivery.md)) |
 | 2026-10-30 | Static Web Apps dropped; local web client and Easy Auth proposed |
 | 2026-10-31 | Single repository and owner access through Entra ID ([ADR-0010](../adr/0010-monorepo-local-pwa-and-entra-owner-access.md)) |
 | 2026-11-09 | Rewritten as a single document |

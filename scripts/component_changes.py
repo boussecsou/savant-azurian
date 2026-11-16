@@ -1,4 +1,4 @@
-"""One declarative ownership policy for CI, release planning and BFF packaging."""
+"""One declarative ownership policy for CI and BFF packaging."""
 
 from __future__ import annotations
 
@@ -27,8 +27,6 @@ def load_manifest(path: Path | None = None) -> dict:
     for name, component in data["components"].items():
         if not re.fullmatch(r"[a-z][a-z0-9_-]*", name):
             raise ValueError("Invalid component name")
-        if not re.fullmatch(r"[a-z0-9_-]+\.yml", component.get("workflow", "")):
-            raise ValueError("Invalid release workflow")
         for field in ("runtime", "exclude", "source_files", "ci"):
             if not _valid_paths(component.get(field)):
                 raise ValueError(f"Invalid {field} paths for {name}")
@@ -36,7 +34,7 @@ def load_manifest(path: Path | None = None) -> dict:
             raise ValueError("Packaged sources must be explicit files under src/")
     if not isinstance(data.get("non_runtime"), list) or any(not isinstance(p, str) for p in data["non_runtime"]):
         raise ValueError("Invalid non-runtime paths")
-    # CI-only checks (e.g. the local PWA) have no release workflow and never deliver.
+    # CI-only checks (e.g. the local PWA) are not components: they only decide which CI jobs run.
     checks = data.setdefault("checks", {})
     if not isinstance(checks, dict) or any(
         not re.fullmatch(r"[a-z][a-z0-9_-]*", name) or name in data["components"] or not _valid_paths(paths)

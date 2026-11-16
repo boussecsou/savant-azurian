@@ -44,6 +44,6 @@ A public test on `/readiness` with a fictitious query string, Authorization and 
 
 **The Python hardening was fixed and tested locally, but not yet deployed at the time of the audit.** Inspection of the container confirmed `HARDENED_LOGGING_MODULE_PRESENT=False`. No dangerous active Azure configuration was found to change. Deploying a new image needs an explicit request under the learning framework of [AGENTS.md](../AGENTS.md).
 
-After merge and a green CI on `main`, use **Publish BFF** manually to build and publish the fixed image to the registry. Then update the Container App explicitly with the verified digest; check the new revision, `/readiness` and the synthetic logs. See [the full procedure](bff-release-procedure.md). No current workflow updates Container Apps automatically.
+After merge and a green CI on `main`, build the fixed image and push it to the registry by hand. Then update the Container App explicitly with the verified digest; check the new revision, `/readiness` and the synthetic logs. No workflow builds, publishes or rolls out the image.
 
 The historical search depends on the data that is accessible and retained; it does not prove the absolute absence of a past leak. Future direct prints to stdout, custom handlers or independent instrumentations and exporters must be reviewed separately. The generic error events deliberately limit detailed diagnosis. No new durable log storage was enabled.

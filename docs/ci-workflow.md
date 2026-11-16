@@ -22,4 +22,4 @@ The `changes` job uses `.github/components.json` to classify the changed files b
 
 Update `pyproject.toml` and `uv.lock`, then run the export command above and commit `requirements.txt` too. It holds the exact versions of the production dependencies; the Savant package is loaded from `src/` thanks to the manifest's `PYTHONPATH`. The `dev` dependencies are not exported.
 
-A green CI on a **push of that SHA to `main`** authorizes CD. A green run on a pull request alone is not enough. The rule also applies to manual CD dispatch; see [the CD workflow](cd-workflow.md).
+Nothing is deployed from GitHub: a green CI only says the change is sound. The agent and the backend are deployed by hand, as the [deployment guide](deployment.md) describes.

@@ -4,7 +4,7 @@ The migration of 8 October 2026 moved to the `gpt-6-luna` model: version `2026-0
 
 ## Configuration and authentication
 
-The deployment name is the value of `AZURE_AI_MODEL_DEPLOYMENT_NAME`. The CD passes the GitHub variable of the same name to the `azd` environment, then `azure.yaml` injects it into the new version of the Hosted Agent. Changing the variable alone does not change the versions already published. The pipeline keeps OIDC and its check of a green CI on the exact SHA of `main`.
+The deployment name is the value of `AZURE_AI_MODEL_DEPLOYMENT_NAME`. `azure.yaml` injects it, from the `azd` environment, into the new version of the Hosted Agent at deployment. Changing the variable alone does not change the versions already published.
 
 For a local run, use the same values:
 

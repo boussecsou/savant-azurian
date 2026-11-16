@@ -1,5 +1,5 @@
 // The BFF Container App. It starts from a public placeholder image because the real image does
-// not exist until `bff/publish.sh` (or the Publish BFF workflow) has pushed it to the registry.
+// not exist until you have built it and pushed it to the registry.
 // Rolling out the real image is a separate, deliberate step: see docs/deployment.md.
 targetScope = 'resourceGroup'
 

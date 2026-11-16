@@ -24,7 +24,7 @@ Without `just`, the equivalent commands are in [`AGENTS.md`](AGENTS.md). No test
 - **Decisions are recorded.** A decision that is hard to reverse, or that touches authorization, consent or secrets, gets an ADR in [`docs/adr/`](docs/adr/README.md) (copy `template.md`). Never edit an accepted ADR: write a new one that supersedes it.
 - **Everything is in English:** documentation, comments, file names, commit messages and templates. The owner-facing French phrases of the runtime are a product feature, not documentation.
 - **`requirements.txt` is generated** from `uv.lock`; CI fails if they diverge (`just export-requirements`). A Dependabot pull request that changes `uv.lock` needs that command run on its branch before it can merge.
-- **Component ownership** lives in [`.github/components.json`](.github/components.json). Code under `src/savant/` deploys the agent when merged to `main`; see [`docs/component-cicd.md`](docs/component-cicd.md).
+- **Component ownership** lives in [`.github/components.json`](.github/components.json). It decides which CI checks a change needs; merging to `main` deploys nothing (see [`docs/component-cicd.md`](docs/component-cicd.md)).
 - **Actions are pinned by commit SHA** with a version comment. Keep that.
 
 ## Pull requests

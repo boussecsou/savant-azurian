@@ -83,7 +83,7 @@ The backend trusts `X-MS-CLIENT-PRINCIPAL-ID`. Until Easy Auth is active on the 
 - Public routes with Easy Auth on: `/readiness` answers `200` and `/oauth/notion/callback?state=x` answers `400`.
 - A token obtained with `az account get-access-token --resource api://<client-id>` after pre-authorizing Azure CLI on the `user_impersonation` scope. Claims observed: `aud` = the client ID, `iss` = `login.microsoftonline.com/<tenant-id>/v2.0`, `ver` = `2.0`, `azp` = Azure CLI, `scp` = `user_impersonation`.
 - With `AGENT_RESPONSES_URL`, `NOTION_OWNER_ID` and `BFF_OWNER_OBJECT_ID` set, on `/api/oauth/notion/status`: no token `401`, fake token `401`, a forged `X-MS-CLIENT-PRINCIPAL-ID` header without a token `401`, the owner's token `200`.
-- A Hosted Agent version deployed by CD, with the Notion configuration and `NOTION_OWNER_ID`.
+- A Hosted Agent version deployed with `azd deploy`, with the Notion configuration and `NOTION_OWNER_ID`.
 
 **Not verified**
 

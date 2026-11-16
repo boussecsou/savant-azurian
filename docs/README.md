@@ -18,7 +18,7 @@ How the system was specified, designed and decided. Start with the [design recor
 | Document | Contents |
 | --- | --- |
 | [Architecture decision records](adr/README.md) | 23 decisions, one each, with status and tags. The security ones explain how an agent with real tools stays safe |
-| [SDD-001](design/sdd-001-mvp-scope-and-use-cases.md) to [SDD-005](design/sdd-005-product-model-memory-and-interface.md) | Scope, architecture, voice runtime, CI/CD, and the product model with the interface |
+| [SDD-001](design/sdd-001-mvp-scope-and-use-cases.md) to [SDD-005](design/sdd-005-product-model-memory-and-interface.md) | Scope, architecture, voice runtime, CI, and the product model with the interface |
 | [SPEC-001](design/spec-001-product-scope.md), [SPEC-002](design/spec-002-azure-for-students-constraints.md) | Product scope and the subscription constraints |
 
 ## Architecture and security
@@ -49,13 +49,12 @@ How the system was specified, designed and decided. Start with the [design recor
 | [observability.md](observability.md), [application-insights.md](application-insights.md), [bff-logging-audit.md](bff-logging-audit.md) | Logs, traces, correlation, the logging audit |
 | [tool-call-evals.md](tool-call-evals.md) | Tool-selection evaluation (pass^k) |
 
-## Delivery (CI/CD)
+## Continuous integration
 
 | Document | Contents |
 | --- | --- |
-| [ci-workflow.md](ci-workflow.md), [cd-workflow.md](cd-workflow.md) | CI gates and agent deployment |
-| [component-cicd.md](component-cicd.md) | Agent and backend ownership, release checkpoints |
-| [publish-bff-workflow.md](publish-bff-workflow.md), [bff-release-procedure.md](bff-release-procedure.md) | Publishing and rolling out the backend image |
+| [ci-workflow.md](ci-workflow.md) | CI gates |
+| [component-cicd.md](component-cicd.md) | Agent and backend ownership, and which CI checks a change triggers |
 
 ## Live validation reports
 

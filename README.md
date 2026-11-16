@@ -29,7 +29,7 @@ The repository holds the whole system: a LangGraph agent on a Foundry hosted age
 | **Two authorization layers** | OAuth authorizes a Notion workspace. A separate semantic judge, a single-use encrypted ledger and a server-written question authorize *one precise operation*. Neither replaces the other. [ADR-0017](docs/adr/0017-two-layer-authorization-for-notion-writes.md) |
 | **Command judge** | Every shell command is judged by a second model call (`RUN`, `CONFIRM` or `REFUSE`); a confirmed command runs only on a later user turn, once, with the same fingerprint. Evaluated in pass^k. [ADR-0018](docs/adr/0018-ssh-tool-with-a-semantic-command-judge.md) |
 | **Outside content as data** | Web pages, Notion pages and tool results are marked untrusted; the real locks are the judges, not the prompt. [ADR-0019](docs/adr/0019-external-content-is-data.md) |
-| **Keyless access** | Entra ID and managed identities for every service, three secrets in Key Vault, and OIDC for CI. [ADR-0020](docs/adr/0020-keyless-access-with-entra-and-key-vault.md) |
+| **Keyless access** | Entra ID and managed identities for every service, and three secrets in Key Vault. [ADR-0020](docs/adr/0020-keyless-access-with-entra-and-key-vault.md) |
 | **Per-project retrieval** | Azure AI Search with the project filter imposed by the server, never chosen by the model. [ADR-0021](docs/adr/0021-per-project-document-retrieval.md) |
 | **Fail-closed behaviour** | Missing identity or an invalid verdict means no write; tool calls are bounded; the interface shows only what exists. [ADR-0022](docs/adr/0022-bounded-tool-execution.md), [ADR-0013](docs/adr/0013-interface-shows-only-what-exists.md) |
 | **Documented decisions** | 23 architecture decision records, 5 design documents and 2 specifications. [Design record](docs/design/README.md) |
@@ -130,7 +130,7 @@ savant-azurian/
 ## Engineering practices
 
 - **CI on every change:** locked dependencies, `ruff`, the Python suite (no test touches Azure), a documentation check, a secrets scan of the whole history, the backend image build and smoke test, and the web client's tests and build.
-- **Component-aware delivery:** the agent and the backend are delivered independently from one registry of ownership; publishing an image does not roll it out. [SDD-004](docs/design/sdd-004-continuous-integration-and-delivery.md)
+- **Component-aware CI:** one registry of ownership decides which checks a change needs, so the backend image is only built when the backend is touched. There is no automated deployment: you deploy with `azd`. [SDD-004](docs/design/sdd-004-continuous-integration-and-delivery.md)
 - **Everything pinned:** actions by commit SHA, Python by `uv.lock`, a generated `requirements.txt` that CI keeps in step.
 - **Evaluated:** the consent judge and the command judge have evaluation datasets scored in pass^k on the production model.
 - **Documented and checked:** every setting has a row in one table, every decision an ADR, and links, anchors and ADR format are verified in CI.

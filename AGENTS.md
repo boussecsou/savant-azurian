@@ -2,7 +2,7 @@
 
 A single-owner personal agent (Python 3.13, LangGraph) hosted as a Foundry Hosted Agent, plus a FastAPI backend (BFF) for the Notion OAuth callback. Monorepo: agent, BFF and web client (`pwa/`, React + Vite). The web client runs locally; the BFF and the agent stay in Azure. The historical prototype is only a functional reference: do not migrate it as is.
 
-This project uses the `microsoft-foundry` skill. Read it before changing a Hosted Agent, a Toolbox, a Foundry connection, an `azd` command or CI/CD.
+This project uses the `microsoft-foundry` skill. Read it before changing a Hosted Agent, a Toolbox, a Foundry connection, an `azd` command or the CI.
 
 The design record is in [`docs/design/`](docs/design/README.md) and [`docs/adr/`](docs/adr/README.md). Every setting is described in [`docs/configuration.md`](docs/configuration.md).
 
@@ -39,9 +39,9 @@ python -m scripts.evaluate_tool_calls [--run --trials 3]        # tool selection
 
 Web client: `cd pwa && npm ci && npm test && npm run build` (Vitest and `tsc`, Node 22, same as CI).
 
-Linting and formatting use `ruff` (configured in `pyproject.toml`); install the hooks once with `pre-commit install`. CI scripts run as modules from the root (`python3 -m scripts.release_plan --component agent`) because they use relative imports.
+Linting and formatting use `ruff` (configured in `pyproject.toml`); install the hooks once with `pre-commit install`. CI scripts run as modules from the root (`python3 -m scripts.check_docs`) because they use relative imports.
 
-Development loop: develop and test locally, validate with `azd ai agent run`, run `azd provision` only for the resources that are needed, then `azd deploy` and a remote smoke test. CI enforces tests and quality; CD only deploys after CI.
+Development loop: develop and test locally, validate with `azd ai agent run`, run `azd provision` only for the resources that are needed, then `azd deploy` and a remote smoke test. CI enforces tests and quality; there is no automated deployment: `azd deploy` is run by hand.
 
 ## Architecture
 
@@ -83,13 +83,12 @@ LangGraph carries the application orchestration (state, nodes, routing, tools, i
 - **Infrastructure is Bicep** in `infra/`, deployed by `azd provision` ([ADR-0023](docs/adr/0023-infrastructure-as-code-with-bicep-and-azd.md), [deployment guide](docs/deployment.md)). What Bicep cannot do stays in `scripts/setup/`, and every script there is a dry run unless `--apply` is given.
 - Outputs of the Bicep template are azd variables and must be described in `docs/configuration.md`.
 
-## CI/CD per component
+## CI per component
 
-`.github/components.json` is the single source of ownership: for `agent` and `bff`, its `runtime` / `exclude` / `source_files` / `ci` paths drive CI, release planning and packaging; `non_runtime` (`pwa/**`, `infra/**`, docs, tests, scripts, `.github`, `*.md`, `.gitignore`, tooling files…) deploys nothing. The `checks` section declares CI checks without delivery: `pwa` produces `pwa_ci` for the Node job. Any path missing from the registry conservatively triggers the agent deployment **and** the BFF publication; so does any change to `components.json` or `.agentignore`.
+`.github/components.json` is the single source of ownership: for `agent` and `bff`, its `runtime` / `exclude` / `source_files` / `ci` paths drive CI and BFF packaging; `non_runtime` (`pwa/**`, `infra/**`, docs, tests, scripts, `.github`, `*.md`, `.gitignore`, tooling files…) is never part of a runtime. The `checks` section declares CI checks that are not components: `pwa` produces `pwa_ci` for the Node job. Any path missing from the registry conservatively counts as a change to every component; so does any change to `components.json` or `.agentignore`.
 - CI (pull requests and pushes to `main`): `uv sync --locked`, check of `requirements.txt` against `uv.lock`, `ruff`, `pytest`, the documentation check, a secrets scan, and the BFF Docker build and smoke test only if the BFF is touched.
-- CD (`cd.yml`) and Publish BFF (`publish-bff.yml`) trigger through `workflow_run` after a green CI on a push to `main` (never on an unvalidated commit). `scripts/release_plan.py` compares with the last checkpoint (artifact `release-<component>-<sha>`) and deploys only if the component's runtime changed. Azure authentication uses OIDC, never a permanent Azure secret.
-- **Merging code under `src/savant/` (outside BFF files) to `main` triggers `azd deploy` of the agent.** Publishing a BFF image to the registry does *not* update the Azure Container App (a separate manual step). Automatic BFF publication requires the repository variable `BFF_AUTO_PUBLISH=true`.
-- Actions are pinned by commit SHA with a version comment: keep that convention. Read `docs/component-cicd.md`, `docs/cd-workflow.md` and `docs/ci-workflow.md` before changing a workflow or the registry.
+- **There is no CD.** Nothing deploys from GitHub: the agent is deployed with `azd deploy` and the BFF image is built and rolled out by hand, as the [deployment guide](docs/deployment.md) describes.
+- Actions are pinned by commit SHA with a version comment: keep that convention. Read `docs/component-cicd.md` and `docs/ci-workflow.md` before changing a workflow or the registry.
 
 ## Tests
 

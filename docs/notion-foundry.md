@@ -79,4 +79,4 @@ A [discussion in a Microsoft repository](https://github.com/microsoft-foundry/ne
 
 The general `TOOLBOX_ENDPOINT` mode, configured in `azure.yaml`, exposes all the tools of a toolbox; it works with `NOTION_MCP_ENABLED=false`, which disables only the Notion-specific backend described above. See [toolbox.md](toolbox.md).
 
-Real discovery of a toolbox version reached Foundry and obtained a consent request for the Notion connection. Consent stays manual, and no Notion read or write is validated by this connection. CD tests the runtime and the model separately; see [cd-workflow.md](cd-workflow.md).
+Real discovery of a toolbox version reached Foundry and obtained a consent request for the Notion connection. Consent stays manual, and no Notion read or write is validated by this connection. The smoke test (`scripts/smoke_test.py`) checks the runtime and the model separately.

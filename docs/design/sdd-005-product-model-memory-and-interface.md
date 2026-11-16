@@ -285,7 +285,7 @@ The base is the interface prototype and its technical integration report. The re
 | **4. Documents** | A `documents` container, upload, a Blob indexer with integrated vectorization, a documents index, the Documents card | Yes |
 | **5. Finishing** | Accessibility, mobile, Diagnostics, then Canvas if time allows | No |
 
-Each phase is cut into **small pull requests**. A reminder from delivery: a pull request touching the agent's runtime code **redeploys the agent** when merged; a backend pull request publishes the image, and updating the Container App stays manual ([SDD-004](sdd-004-continuous-integration-and-delivery.md)).
+Each phase is cut into **small pull requests**. Nothing deploys from a merge: the agent and the backend are rolled out by hand ([SDD-004](sdd-004-continuous-integration-and-delivery.md)).
 
 ## 11. Decisions
 
@@ -336,7 +336,7 @@ All proposed defaults were kept. The one exception, Q2, was deferred to when the
 
 ## 15. Phase 1: implementation notes (2026-11-05)
 
-Phase 1 (interface and model, local) was written and verified. Nothing was deployed: the web client runs locally and the `pwa/` folder triggers neither delivery nor a backend publication.
+Phase 1 (interface and model, local) was written and verified. Nothing was deployed: the web client runs locally and the `pwa/` folder changes neither the agent nor the backend.
 
 ### 15.1 What was done
 

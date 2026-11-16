@@ -148,14 +148,6 @@ def test_workflow_variables_are_documented():
     assert not missing, f"Workflows read GitHub variables missing from docs/configuration.md: {missing}"
 
 
-def test_azure_yaml_variables_reach_the_deployment_workflow():
-    """CD must set, in the azd environment, every variable azure.yaml reads (except azd's own)."""
-    azure = set(re.findall(rf"\$\{{({NAME})\}}", (ROOT / "azure.yaml").read_text(encoding="utf-8")))
-    cd = (ROOT / ".github" / "workflows" / "cd.yml").read_text(encoding="utf-8")
-    missing = sorted(n for n in azure if n not in cd)
-    assert not missing, f"cd.yml never sets these azure.yaml variables: {missing}"
-
-
 @pytest.mark.parametrize("script", sorted((ROOT / "scripts" / "setup").glob("*.sh")))
 def test_setup_scripts_are_dry_run_by_default(script):
     text = script.read_text(encoding="utf-8")

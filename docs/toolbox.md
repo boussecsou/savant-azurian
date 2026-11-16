@@ -37,7 +37,7 @@ Changing the manifest does not update the agent that is already deployed. Publis
 
 ## Deployment and personal consent
 
-CD tests the runtime and the real model with a dedicated request that uses no tools. It asks for no consent for the pipeline's identity. The user finishes OAuth manually in a normal playground conversation. A green CD is not an operational validation of Notion. See [cd-workflow.md](cd-workflow.md) for the exact check and its limits.
+The runtime and the real model can be checked with a dedicated request that uses no tools (`scripts/smoke_test.py`); it asks for no consent. The user finishes OAuth manually in a normal playground conversation. A passing smoke test is not an operational validation of Notion.
 
 ## Changing the toolbox without redeploying the agent
 

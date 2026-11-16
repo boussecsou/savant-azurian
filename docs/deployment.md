@@ -35,7 +35,7 @@ One resource group, `rg-<environment>`, with:
 | Container Registry | Backend image | Admin user disabled |
 | Container Apps environment and app | The backend (BFF) | Starts on a placeholder image |
 | Log Analytics and Application Insights | Logs and traces | Connected to the Foundry project |
-| Two managed identities | Backend runtime; GitHub Actions (OIDC) | No password anywhere |
+| Two managed identities | Backend runtime; an optional CI identity (OIDC) | No password anywhere |
 
 ## Who does what
 
@@ -78,7 +78,7 @@ azd env set AZURE_LOCATION <region>
 azd env set AZURE_SUBSCRIPTION_ID <subscription-id>
 azd env set NOTION_OWNER_ID "$(python3 -c 'import uuid; print(uuid.uuid4())')"
 azd env set BFF_OWNER_OBJECT_ID "$(az ad signed-in-user show --query id -o tsv)"
-azd env set OIDC_GITHUB_REPOSITORY <owner>/<repo>      # optional, for GitHub Actions
+azd env set OIDC_GITHUB_REPOSITORY <owner>/<repo>      # optional: lets a pipeline you add sign in
 ```
 
 `NOTION_OWNER_ID` is a fixed key of your choosing, not a Notion identifier: any stable string, the same on the agent and the backend. `BFF_OWNER_OBJECT_ID` is your Entra object ID, which the backend compares with the caller's.
@@ -183,16 +183,7 @@ azd provision
 
 The template adds `AGENT_RESPONSES_URL` to the backend only when `NOTION_OWNER_ID` and `BFF_OWNER_OBJECT_ID` are also set, so the app cannot start half configured.
 
-### 11. GitHub Actions (optional)
-
-```bash
-scripts/setup/github-variables.sh --repo <owner>/<name>            # dry run
-scripts/setup/github-variables.sh --repo <owner>/<name> --apply
-```
-
-GitHub signs in to Azure through OpenID Connect with the CI identity, so no Azure secret is ever stored. `CD` and `Publish BFF` deploy as soon as CI is green on `main`; keep them disabled until you want that.
-
-### 12. Use it
+### 11. Use it
 
 Run the web interface locally ([web client guide](../pwa/README.md)) and connect Notion from *Settings*. The [user guide](user-guide.md) walks through the interface.
 
@@ -274,5 +265,5 @@ This template has not met a real subscription yet. On the first run, check:
 
 - [Configuration reference](configuration.md): every variable and secret.
 - [Toolbox](toolbox.md), [search documents](search-documents.md), [SSH tool](ssh-tool.md), [workspace on Cosmos DB](workspace-cosmos.md).
-- [Component delivery](component-cicd.md): what a merge to `main` deploys.
+- [Component CI](component-cicd.md): which checks a change triggers. A merge to `main` deploys nothing.
 - [ADR-0020](adr/0020-keyless-access-with-entra-and-key-vault.md) and [ADR-0023](adr/0023-infrastructure-as-code-with-bicep-and-azd.md): why it is built this way.

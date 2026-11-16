@@ -1,16 +1,14 @@
 {
   "version": 1,
-  "non_runtime": ["pwa/**", "docs/**", "tests/**", "evals/**", ".github/**", "scripts/**", "bff/**", "*.md", "*.rst", "LICENSE", ".gitignore", ".env.example", "Dockerfile", ".claude/**", "infra/**", ".editorconfig", ".gitattributes", ".pre-commit-config.yaml", "justfile", ".devcontainer/**", "release-please-config.json", ".release-please-manifest.json", "CODE_OF_CONDUCT.md", "CHANGELOG.md"],
+  "non_runtime": ["pwa/**", "docs/**", "tests/**", "evals/**", ".github/**", "scripts/**", "*.md", "*.rst", "LICENSE", ".gitignore", ".env.example", "Dockerfile", ".claude/**", "infra/**", ".editorconfig", ".gitattributes", ".pre-commit-config.yaml", "justfile", ".devcontainer/**", "release-please-config.json", ".release-please-manifest.json", "CODE_OF_CONDUCT.md", "CHANGELOG.md"],
   "components": {
     "agent": {
-      "workflow": "cd.yml",
       "runtime": ["main.py", "src/savant/**", "azure.yaml", ".agentignore", "pyproject.toml", "uv.lock", "requirements.txt"],
       "exclude": ["src/savant/oauth_callback.py", "src/savant/bff_logging.py", "src/savant/bff_api.py", "src/savant/bff_workspace.py", "src/savant/workspace.py", "src/savant/workspace_store.py", "src/savant/document_library.py", "src/savant/bff_documents.py"],
       "source_files": [],
-      "ci": ["tests/**", "scripts/smoke_test.py", ".github/workflows/ci.yml", ".github/workflows/cd.yml"]
+      "ci": ["tests/**", "scripts/smoke_test.py", ".github/workflows/ci.yml"]
     },
     "bff": {
-      "workflow": "publish-bff.yml",
       "runtime": ["Dockerfile.bff", "Dockerfile.bff.dockerignore", ".dockerignore", "pyproject.toml", "uv.lock", "scripts/package_bff.py"],
       "exclude": [],
       "source_files": [
@@ -28,7 +26,7 @@
         "src/savant/document_library.py",
         "src/savant/bff_documents.py"
       ],
-      "ci": ["tests/test_bff*.py", "tests/test_oauth*.py", "tests/test_notion_oauth.py", "tests/test_component*.py", "tests/test_package_bff.py", "scripts/smoke_test_bff.py", "scripts/component_changes.py", "scripts/release_plan.py", "bff/**", ".github/workflows/ci.yml", ".github/workflows/publish-bff.yml"]
+      "ci": ["tests/test_bff*.py", "tests/test_oauth*.py", "tests/test_notion_oauth.py", "tests/test_component*.py", "tests/test_package_bff.py", "scripts/smoke_test_bff.py", "scripts/component_changes.py", ".github/workflows/ci.yml"]
     }
   },
   "checks": {
