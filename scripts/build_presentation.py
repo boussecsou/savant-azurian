@@ -2,7 +2,7 @@
 
     uv run python -m scripts.build_presentation [--lang en|fr] [--output PATH]
 
-The page is 16:9 (1280 x 720 px) so that it reads well as a LinkedIn document. Fonts are bundled next to
+The pages are 16:9 (1280 x 720 px), which suits a LinkedIn document. Fonts are bundled next to
 the HTML; Chromium or Chrome is found as in `scripts.build_pdf`.
 """
 
@@ -24,7 +24,7 @@ SOURCES = {
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--lang", choices=sorted(SOURCES), default="en")
+    parser.add_argument("--lang", choices=["en", "fr"], default="en")
     parser.add_argument("--output", type=Path)
     parser.add_argument("--chrome")
     args = parser.parse_args()

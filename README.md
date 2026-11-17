@@ -140,6 +140,7 @@ savant-azurian/
 
 | Document | Contents |
 | --- | --- |
+| [Presentation (PDF, English)](docs/savant-azurian-presentation.pdf) · [français](docs/savant-azurian-presentation.fr.pdf) | The project in 11 pages: problem, architecture, how it works, proof and limits |
 | [Documentation index](docs/README.md) | Every document, grouped by topic |
 | [User guide](docs/user-guide.md) | Using the web client: chat, voice, projects, documents, settings |
 | [Deployment guide](docs/deployment.md) | Create your own Azure environment with Bicep and `azd` |
